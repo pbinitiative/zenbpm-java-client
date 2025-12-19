@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.zenbpm</groupId>
         <artifactId>zenbpm-java-client</artifactId>
-        <version>1.0.0</version>
+        <version>0.3.9</version>
     </parent>
 
     <artifactId>zenbpm-spring-boot-starter</artifactId>

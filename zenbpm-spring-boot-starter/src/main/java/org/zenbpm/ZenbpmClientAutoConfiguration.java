@@ -12,4 +12,9 @@ public class ZenbpmClientAutoConfiguration {
     public ZenbpmClientService zenbpmApiClient() {
         return new ZenbpmClientService();
     }
+
+    @Bean
+    ZenbpmJobWorkerManager zenbpmJobWorkerManager(ZenbpmClientProperties props) {
+        return new ZenbpmJobWorkerManager(props);
+    }
 }

@@ -25,7 +25,7 @@ public class ZenbpmClientService {
     private void initApiClient() {
         if (apiClient == null) {
             apiClient = new ApiClient();
-            apiClient.setBasePath(properties.getBaseUrl());
+            apiClient.setBasePath(properties.getRestUrl());
         }
     }
 }

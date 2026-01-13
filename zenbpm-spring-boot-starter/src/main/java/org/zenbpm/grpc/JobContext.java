@@ -1,4 +1,4 @@
-package org.zenbpm;
+package org.zenbpm.grpc;
 
 import org.zenbpm.proto.Zenbpm;
 

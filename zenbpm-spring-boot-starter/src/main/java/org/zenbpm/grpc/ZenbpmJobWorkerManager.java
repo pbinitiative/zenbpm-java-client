@@ -1,4 +1,4 @@
-package org.zenbpm;
+package org.zenbpm.grpc;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -8,10 +8,12 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.MDC;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.util.ReflectionUtils;
+import org.zenbpm.ZenbpmClientProperties;
 import org.zenbpm.proto.ZenBpmGrpc;
 import org.zenbpm.proto.Zenbpm;
 
@@ -20,8 +22,12 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
+
+    private static final Logger log = LoggerFactory.getLogger(ZenbpmJobWorkerManager.class);
     private static final TypeReference<HashMap<String,Object>> MAP_TYPE_REF = new TypeReference<HashMap<String,Object>>() {};
     private final ZenbpmClientProperties properties;
 
@@ -30,17 +36,17 @@ class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
     private volatile boolean running = false;
 
     private ManagedChannel channel;
-    private ZenBpmGrpc.ZenBpmStub stub;
     private StreamObserver<Zenbpm.JobStreamRequest> requestObserver;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    ZenbpmJobWorkerManager(ZenbpmClientProperties properties) {
+    public ZenbpmJobWorkerManager(ZenbpmClientProperties properties) {
         this.properties = properties;
     }
 
     @Override
-    public Object postProcessAfterInitialization(Object bean, @NotNull String beanName) throws BeansException {
+    public Object postProcessAfterInitialization(@NotNull Object bean, @NotNull String beanName) throws BeansException {
+        if (!properties.isJobWorkerEnabled()) return bean;
         Class<?> targetClass = bean.getClass();
         ReflectionUtils.doWithMethods(targetClass, method -> {
             JobWorker annotation = method.getAnnotation(JobWorker.class);
@@ -55,8 +61,7 @@ class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
 
     @Override
     public void start() {
-        if (running) return;
-        if (handlers.isEmpty()) {
+        if (running || handlers.isEmpty()) {
             return;
         }
         ManagedChannelBuilder<?> chBuilder = ManagedChannelBuilder
@@ -64,16 +69,16 @@ class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
         if (properties.isGrpcPlaintext()) {
             chBuilder = chBuilder.usePlaintext();
         }
+
         channel = chBuilder.build();
 
-        stub = ZenBpmGrpc.newStub(channel);
+        ZenBpmGrpc.ZenBpmStub stub = ZenBpmGrpc.newStub(channel);
 
         StreamObserver<Zenbpm.JobStreamResponse> responseObserver = new StreamObserver<Zenbpm.JobStreamResponse>() {
             @Override
             public void onNext(Zenbpm.JobStreamResponse resp) {
                 if (resp.hasError()) {
-                    // TODO: replace logs with slf4j
-                    System.err.println("[ZenBPM] Server error: " + resp.getError().getCode() + ": " + resp.getError().getMessage());
+                    log.error("Server error: {}: {}", resp.getError().getCode(), resp.getError().getMessage());
                     return;
                 }
                 if (resp.hasJob()) {
@@ -84,13 +89,13 @@ class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
 
             @Override
             public void onError(Throwable t) {
-                System.err.println("[ZenBPM] Stream error: " + t);
+                log.error("Stream error", t);
                 running = false;
             }
 
             @Override
             public void onCompleted() {
-                System.out.println("[ZenBPM] Stream completed by server");
+                log.info("Stream completed by server");
                 running = false;
             }
         };
@@ -121,6 +126,11 @@ class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
             return;
         }
         try {
+            MDC.put("job_key", Long.toString(job.getKey()));
+            if (properties.isGrpcLoggingEnabled()) {
+                log.debug("Starting job processing for type '{}', key '{}'", job.getType(), job.getKey());
+                log.trace("Job variables: {}", job.getVariables());
+            }
             Object result;
             Class<?>[] paramTypes = handler.method.getParameterTypes();
             if (paramTypes.length == 0) {
@@ -146,13 +156,17 @@ class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
                     .build();
             Zenbpm.JobStreamRequest completeReq = Zenbpm.JobStreamRequest.newBuilder().setComplete(complete).build();
             requestObserver.onNext(completeReq);
+            if (properties.isGrpcLoggingEnabled()) {
+                log.debug("Successfully completed job '{}'", job.getKey());
+                log.trace("Job result: {}", result);
+            }
         } catch (Exception ex) {
             String msg = ex.getMessage() == null ? ex.toString() : ex.getMessage();
             ByteString vars = ByteString.EMPTY;
             try {
                 vars = serializeResult(Collections.singletonMap("error", msg));
             } catch (Exception e) {
-                System.err.println("[ZenBPM] Failed to serialize error variables: " + e.getMessage());
+                log.warn("Failed to serialize error variables: {}", e.getMessage());
             }
             Zenbpm.JobFailRequest fail = Zenbpm.JobFailRequest.newBuilder()
                     .setKey(job.getKey())
@@ -162,6 +176,9 @@ class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
                     .build();
             Zenbpm.JobStreamRequest failReq = Zenbpm.JobStreamRequest.newBuilder().setFail(fail).build();
             requestObserver.onNext(failReq);
+            log.error("Failed to process job '{}': {}", job.getKey(), msg, ex);
+        } finally {
+            MDC.remove("job_key");
         }
     }
 
@@ -187,7 +204,7 @@ class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
                 try {
                     requestObserver.onCompleted();
                 } catch (Exception e) {
-                    System.err.println("[ZenBPM] Error completing request observer: " + e.getMessage());
+                    log.warn("Error completing request observer: {}", e.getMessage());
                 }
             }
             if (channel != null) {

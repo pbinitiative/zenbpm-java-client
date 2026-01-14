@@ -5,21 +5,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("zenbpm")
 public class ZenbpmClientProperties {
 
-    // REST base URL (existing functionality)
+    // rest
     private String restUrl = "http://localhost:8080/v1";
-
-    // REST logging
     private boolean restLoggingEnabled = true;
 
-    // gRPC connection properties
+    // grpc
     private String grpcHost = "localhost";
     private int grpcPort = 9090;
-    private boolean grpcPlaintext = true; // set to false when using TLS
-
-    // gRPC logging
+    private boolean grpcPlaintext = true;
     private boolean grpcLoggingEnabled = true;
-
     private boolean jobWorkerEnabled = true;
+
+    // opentelemetry
+    private boolean otelEnabled = true;
 
     public String getRestUrl() {
         return restUrl;
@@ -75,5 +73,13 @@ public class ZenbpmClientProperties {
 
     public void setJobWorkerEnabled(boolean jobWorkerEnabled) {
         this.jobWorkerEnabled = jobWorkerEnabled;
+    }
+
+    public boolean isOtelEnabled() {
+        return otelEnabled;
+    }
+
+    public void setOtelEnabled(boolean otelEnabled) {
+        this.otelEnabled = otelEnabled;
     }
 }

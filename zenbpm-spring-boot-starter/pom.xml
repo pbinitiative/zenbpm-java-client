@@ -46,13 +46,11 @@
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
             <version>${opentelemetry.version}</version>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-context</artifactId>
             <version>${opentelemetry.version}</version>
-            <optional>true</optional>
         </dependency>
     </dependencies>
 </project>

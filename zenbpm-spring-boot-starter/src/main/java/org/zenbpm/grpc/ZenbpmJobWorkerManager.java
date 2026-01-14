@@ -7,9 +7,16 @@ import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.MDC;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.util.ReflectionUtils;
@@ -30,6 +37,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
     private static final Logger log = LoggerFactory.getLogger(ZenbpmJobWorkerManager.class);
     private static final TypeReference<HashMap<String,Object>> MAP_TYPE_REF = new TypeReference<HashMap<String,Object>>() {};
     private final ZenbpmClientProperties properties;
+    private final ObjectProvider<OpenTelemetry> openTelemetry;
 
     private final Map<String, Handler> handlers = new ConcurrentHashMap<>();
 
@@ -40,8 +48,9 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ZenbpmJobWorkerManager(ZenbpmClientProperties properties) {
+    public ZenbpmJobWorkerManager(ZenbpmClientProperties properties, ObjectProvider<OpenTelemetry> openTelemetry) {
         this.properties = properties;
+        this.openTelemetry = openTelemetry;
     }
 
     @Override
@@ -125,7 +134,20 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             // Ignore unknown job types
             return;
         }
-        try {
+
+        OpenTelemetry otel = properties.isOtelEnabled() ? openTelemetry.getIfAvailable() : null;
+        Tracer tracer = (otel != null) ? otel.getTracer("org.zenbpm.grpc") : null;
+
+        Span span = (tracer != null)
+                ? tracer.spanBuilder("zenbpm.job.process").setSpanKind(SpanKind.CONSUMER).startSpan()
+                : null;
+
+        if (span != null) {
+            span.setAttribute("zenbpm.job.type", job.getType());
+            span.setAttribute("zenbpm.job.key", job.getKey());
+        }
+
+        try (Scope scope = (span != null) ? span.makeCurrent() : null) {
             MDC.put("job_key", Long.toString(job.getKey()));
             if (properties.isGrpcLoggingEnabled()) {
                 log.debug("Starting job processing for type '{}', key '{}'", job.getType(), job.getKey());
@@ -161,6 +183,11 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
                 log.trace("Job result: {}", result);
             }
         } catch (Exception ex) {
+            if (span != null) {
+                span.recordException(ex);
+                span.setStatus(StatusCode.ERROR);
+            }
+
             String msg = ex.getMessage() == null ? ex.toString() : ex.getMessage();
             ByteString vars = ByteString.EMPTY;
             try {
@@ -179,6 +206,9 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             log.error("Failed to process job '{}': {}", job.getKey(), msg, ex);
         } finally {
             MDC.remove("job_key");
+            if (span != null) {
+                span.end();
+            }
         }
     }
 

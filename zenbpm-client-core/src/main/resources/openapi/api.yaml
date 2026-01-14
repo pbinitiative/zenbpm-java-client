@@ -17,26 +17,20 @@ servers:
 tags:
   - name: process-definition
   - name: process-instance
+  - name: dmn-resource-definition
   - name: decision-definition
-  - name: decision
   - name: job
   - name: message
   - name: incident
   - name: test
 
 paths:
-  /decision-definitions:
+  /dmn-resource-definitions:
     post:
-      operationId: createDecisionDefinition
-      summary: Deploy a new decision definition
+      operationId: createDmnResourceDefinition
+      summary: Deploy a new dmn resource definition
       tags:
-        - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/decision-definitions \
-              -H "Content-Type: application/xml" \
-              --data-binary @decision.dmn
+        - dmn-resource-definition
       requestBody:
         required: true
         content:
@@ -53,19 +47,19 @@ paths:
               </definitions>
       responses:
         201:
-          description: Decision definition deployed
+          description: Dmn resource definition deployed
           content:
             application/json:
               schema:
                 type: object
                 required:
-                  - decisionDefinitionKey
+                  - dmnResourceDefinitionKey
                 properties:
-                  decisionDefinitionKey:
-                    type: string
-                    pattern: '^\d{15,20}$'
+                  dmnResourceDefinitionKey:
+                    type: integer
+                    format: int64
               example:
-                decisionDefinitionKey: "4503599627370495"
+                dmnResourceDefinitionKey: 4503599627370495
         400:
           description: Bad request
           content:
@@ -73,7 +67,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         409:
-          description: Conflict - decision definition already exists
+          description: Conflict - dmn resource definition already exists
           content:
             application/json:
               schema:
@@ -86,14 +80,10 @@ paths:
                 $ref: "#/components/schemas/Error"
 
     get:
-      operationId: getDecisionDefinitions
-      summary: Get list of decision definitions
+      operationId: getDmnResourceDefinitions
+      summary: Get list of dmn resource definitions
       tags:
-        - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/decision-definitions?page=1&size=10"
+        - dmn-resource-definition
       parameters:
         - name: page
           in: query
@@ -116,11 +106,11 @@ paths:
           example: 10
       responses:
         200:
-          description: List of decision definitions
+          description: List of dmn resource definitions
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DecisionDefinitionsPage"
+                $ref: "#/components/schemas/DmnResourceDefinitionsPage"
               example:
                 items:
                   - key: "4503599627370495"
@@ -143,31 +133,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /decision-definitions/{decisionDefinitionKey}:
+  /dmn-resource-definitions/{dmnResourceDefinitionKey}:
     get:
-      operationId: getDecisionDefinition
-      summary: Get decision definition
+      operationId: getDmnResourceDefinition
+      summary: Get dmn resource definition
       tags:
-        - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/decision-definitions/123456789
+        - dmn-resource-definition
       parameters:
-        - name: decisionDefinitionKey
+        - name: dmnResourceDefinitionKey
           required: true
           in: path
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370495"
+            type: integer
+            format: int64
+          example: 4503599627370495
       responses:
         200:
-          description: Decision definition
+          description: Dmn resource definition
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DecisionDefinitionDetail"
+                $ref: "#/components/schemas/DmnResourceDefinitionDetail"
               example:
                 key: "4503599627370495"
                 version: 1
@@ -192,24 +178,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /decisions/{decisionId}/evaluate:
+  /decision-definitions/{decisionId}/evaluate:
     post:
       operationId: evaluateDecision
-      summary: Evaluate latest version of decision directly in engine
+      summary: Evaluate latest version of decision definition directly in engine
       tags:
-        - decision
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/decisions/sample-decision-id/evaluate \
-              -H "Content-Type: application/json" \
-              -d '{
-                "bindingType": "latest",
-                "variables": {
-                  "age": 25,
-                  "income": 50000
-                }
-              }'
+        - decision-definition
       parameters:
         - name: decisionId
           required: true
@@ -258,7 +232,7 @@ paths:
                     decisionName: "Loan Approval"
                     decisionType: "DECISION_TABLE"
                     decisionDefinitionVersion: 1
-                    decisionDefinitionKey: "4503599627370495"
+                    dmnResourceDefinitionKey: 4503599627370495
                     decisionDefinitionId: "loan-approval"
                     matchedRules:
                       - ruleId: "rule1"
@@ -291,12 +265,6 @@ paths:
       summary: Deploy a new process definition
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/process-definitions \
-              -H "Content-Type: application/xml" \
-              --data-binary @process.bpmn
       requestBody:
         required: true
         content:
@@ -322,10 +290,10 @@ paths:
                   - processDefinitionKey
                 properties:
                   processDefinitionKey:
-                    type: string
-                    pattern: '^\d{15,20}$'
+                    type: integer
+                    format: int64
               example:
-                processDefinitionKey: "4503599627370498"
+                processDefinitionKey: 4503599627370498
         400:
           description: Bad request
           content:
@@ -349,10 +317,6 @@ paths:
       summary: Get list of process definitions
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-definitions?page=1&size=10"
       parameters:
         - name: page
           in: query
@@ -408,18 +372,14 @@ paths:
       summary: Get process definition
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/process-definitions/123456789
       parameters:
         - name: processDefinitionKey
           required: true
           in: path
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370498"
+            type: integer
+            format: int64
+          example: 4503599627370498
       responses:
         200:
           description: Process definition
@@ -457,18 +417,6 @@ paths:
       summary: Create a new process instance
       tags:
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/process-instances \
-              -H "Content-Type: application/json" \
-              -d '{
-                "processDefinitionKey": "123456789",
-                "variables": {
-                  "customerId": "customer-456",
-                  "amount": 1000
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -479,16 +427,19 @@ paths:
                 - processDefinitionKey
               properties:
                 processDefinitionKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                 historyTimeToLive:
                   type: string
                   description: Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
                   example: 30d
+                businessKey:
+                  type: string
+                  description: Business key of the process instance used mainly for correlating process instance to the business entity.
             example:
-              processDefinitionKey: "4503599627370498"
+              processDefinitionKey: 4503599627370498
               variables:
                 customerId: "customer-456"
                 amount: 1000
@@ -532,19 +483,26 @@ paths:
       operationId: getProcessInstances
       tags:
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances?processDefinitionKey=123456789&page=1&size=10"
       parameters:
         - name: processDefinitionKey
           in: query
-          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Key of the process definition
+          example: 4503599627370498
+        - name: parentProcessInstanceKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Key of the parent process instance
+          example: 1603294627315478
+        - name: businessKey
+          in: query
           schema:
             type: string
-            pattern: '^\d{15,20}$'
-          description: Key of the process definition
-          example: "4503599627370498"
+          description: Business key of the process instance used mainly for correlating process instance to the business entity.
         - name: page
           in: query
           schema:
@@ -563,6 +521,7 @@ paths:
             default: 10
           description: Number of items per page
           example: 10
+
       responses:
         200:
           description: List of running process instances
@@ -629,18 +588,14 @@ paths:
       tags:
         - process-instance
       summary: Get state of a process instance selected by processInstanceKey
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/process-instances/123456789
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
       responses:
         200:
           description: State of a process instance
@@ -685,18 +640,14 @@ paths:
       tags:
         - process-instance
       summary: Get list of jobs for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/jobs?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
         - name: page
           in: query
           schema:
@@ -772,18 +723,14 @@ paths:
       tags:
         - process-instance
       summary: Get list of visited flow elements for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/history?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
         - name: page
           in: query
           schema:
@@ -847,18 +794,14 @@ paths:
       tags:
         - process-instance
       summary: Get list of incidents for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/incidents?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
         - name: page
           in: query
           schema:
@@ -925,10 +868,6 @@ paths:
       tags:
         - job
       summary: Get list of jobs on partitions
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/jobs?jobType=service-task&state=active&page=1&size=10"
       parameters:
         - name: jobType
           in: query
@@ -1010,18 +949,6 @@ paths:
       tags:
         - job
       summary: Complete a job
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/jobs \
-              -H "Content-Type: application/json" \
-              -d '{
-                "jobKey": "123456789",
-                "variables": {
-                  "result": "success",
-                  "processedItems": 42
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -1032,12 +959,12 @@ paths:
                 - jobKey
               properties:
                 jobKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
             example:
-              jobKey: "4503599627370540"
+              jobKey: 4503599627370540
               variables:
                 result: "success"
                 transactionId: "tx-789-xyz"
@@ -1064,19 +991,6 @@ paths:
       tags:
         - message
       summary: Publish a message
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/messages \
-              -H "Content-Type: application/json" \
-              -d '{
-                "correlationKey": "instance-key-789",
-                "messageName": "payment-received",
-                "variables": {
-                  "paymentId": "123456789",
-                  "amount": 500
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -1089,13 +1003,12 @@ paths:
               properties:
                 correlationKey:
                   type: string
-                  pattern: '^\d{15,20}$'
                 messageName:
                   type: string
                 variables:
                   type: object
             example:
-              correlationKey: "4503599627370501"
+              correlationKey: "011-235-813"
               messageName: "payment-received"
               variables:
                 paymentId: "pay-123-abc"
@@ -1124,18 +1037,14 @@ paths:
       tags:
         - incident
       summary: Resolve an incident
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/incidents/123456789/resolve
       parameters:
         - name: incidentKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370530"
+            type: integer
+            format: int64
+          example: 4503599627370530
       responses:
         201:
           description: Incident resolved
@@ -1170,8 +1079,8 @@ paths:
                 - startingElementIds
               properties:
                 processDefinitionKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                 startingElementIds:
@@ -1180,12 +1089,12 @@ paths:
                   items:
                     type: string
             example:
-              processDefinitionKey: "4503599627370498"
+              processDefinitionKey: 4503599627370498
               variables:
                 customerId: "customer-456"
                 amount: 1000
                 applicationDate: "2025-08-22"
-              startingElementIds: [ "flowNode-1","flowNode-2" ]
+              startingElementIds: ["flowNode-1", "flowNode-2"]
       responses:
         201:
           description: Process instance created
@@ -1229,8 +1138,8 @@ paths:
                 - processInstanceKey
               properties:
                 processInstanceKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                   description: "Sets process instance variables."
@@ -1289,7 +1198,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^[a-zA-Z0-9-_]+$'
+            pattern: "^[a-zA-Z0-9-_]+$"
           description: ID of the node to profile
       responses:
         200:
@@ -1312,7 +1221,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^[a-zA-Z0-9-_]+$'
+            pattern: "^[a-zA-Z0-9-_]+$"
           description: ID of the node to stop profiling
       responses:
         200:
@@ -1386,7 +1295,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProcessInstance"
-    DecisionDefinitionsPage:
+    DmnResourceDefinitionsPage:
       type: object
       allOf:
         - type: object
@@ -1396,28 +1305,31 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/DecisionDefinitionSimple"
+                $ref: "#/components/schemas/DmnResourceDefinitionSimple"
         - $ref: "#/components/schemas/PageMetadata"
-    DecisionDefinitionSimple:
+    DmnResourceDefinitionSimple:
       type: object
       required:
         - key
         - version
         - decisionDefinitionId
+        - resourceName
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         version:
           type: integer
-        decisionDefinitionId:
+        dmnResourceDefinitionId:
           type: string
-    DecisionDefinitionDetail:
+        resourceName:
+          type: string
+    DmnResourceDefinitionDetail:
       type: object
       required:
         - dmnData
       allOf:
-        - $ref: "#/components/schemas/DecisionDefinitionSimple"
+        - $ref: "#/components/schemas/DmnResourceDefinitionSimple"
         - type: object
           properties:
             dmnData:
@@ -1432,8 +1344,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EvaluatedDecisionResult"
-        decisionOutput:
-          type: object
+        decisionOutput: {}
     EvaluatedDecisionResult:
       type: object
       required:
@@ -1441,7 +1352,7 @@ components:
         - decisionName
         - decisionType
         - decisionDefinitionVersion
-        - decisionDefinitionKey
+        - dmnResourceDefinitionKey
         - decisionDefinitionId
         - matchedRules
         - decisionOutput
@@ -1455,9 +1366,9 @@ components:
           type: string
         decisionDefinitionVersion:
           type: integer
-        decisionDefinitionKey:
-          type: string
-          pattern: '^\d{15,20}$'
+        dmnResourceDefinitionKey:
+          type: integer
+          format: int64
         decisionDefinitionId:
           type: string
         matchedRules:
@@ -1499,8 +1410,7 @@ components:
           type: string
         inputExpression:
           type: string
-        inputValue:
-          type: object
+        inputValue: {}
     EvaluatedDecisionOutput:
       type: object
       required:
@@ -1534,8 +1444,8 @@ components:
         - bpmnProcessId
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         version:
           type: integer
         bpmnProcessId:
@@ -1573,11 +1483,13 @@ components:
         - activeElementInstances
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         processDefinitionKey:
+          type: integer
+          format: int64
+        businessKey:
           type: string
-          pattern: '^\d{15,20}$'
         createdAt:
           type: string
           format: date-time
@@ -1587,6 +1499,9 @@ components:
             - active
             - completed
             - terminated
+        parentProcessInstanceKey:
+          type: integer
+          format: int64
         variables:
           type: object
         activeElementInstances:
@@ -1641,15 +1556,15 @@ components:
         - variables
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementId:
           type: string
         type:
           type: string
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         state:
           $ref: "#/components/schemas/JobState"
         createdAt:
@@ -1673,8 +1588,8 @@ components:
         - elementId
       properties:
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         createdAt:
           type: string
           format: date-time
@@ -1698,8 +1613,8 @@ components:
         - elementInstanceKey
       properties:
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
       example:
         elementId: "flow-node-1"
     StartElementInstanceData:
@@ -1721,11 +1636,11 @@ components:
         - elementId
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         createdAt:
           type: string
           format: date-time
@@ -1755,16 +1670,16 @@ components:
         - executionToken
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementId:
           type: string
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         message:
           type: string
         createdAt:
@@ -1774,7 +1689,8 @@ components:
           type: string
           format: date-time
         executionToken:
-          type: string
+          type: integer
+          format: int64
     Error:
       type: object
       required:

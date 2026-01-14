@@ -5,13 +5,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("zenbpm")
 public class ZenbpmClientProperties {
 
-    // REST base URL (existing functionality)
+    // rest
     private String restUrl = "http://localhost:8080/v1";
+    private boolean restLoggingEnabled = true;
 
-    // gRPC connection properties
+    // grpc
     private String grpcHost = "localhost";
     private int grpcPort = 9090;
-    private boolean grpcPlaintext = true; // set to false when using TLS
+    private boolean grpcPlaintext = true;
+    private boolean grpcLoggingEnabled = true;
+    private boolean jobWorkerEnabled = true;
+
+    // opentelemetry
+    private boolean otelEnabled = true;
 
     public String getRestUrl() {
         return restUrl;
@@ -19,6 +25,14 @@ public class ZenbpmClientProperties {
 
     public void setRestUrl(String restUrl) {
         this.restUrl = restUrl;
+    }
+
+    public boolean isRestLoggingEnabled() {
+        return restLoggingEnabled;
+    }
+
+    public void setRestLoggingEnabled(boolean restLoggingEnabled) {
+        this.restLoggingEnabled = restLoggingEnabled;
     }
 
     public String getGrpcHost() {
@@ -43,5 +57,29 @@ public class ZenbpmClientProperties {
 
     public void setGrpcPlaintext(boolean grpcPlaintext) {
         this.grpcPlaintext = grpcPlaintext;
+    }
+
+    public boolean isGrpcLoggingEnabled() {
+        return grpcLoggingEnabled;
+    }
+
+    public void setGrpcLoggingEnabled(boolean grpcLoggingEnabled) {
+        this.grpcLoggingEnabled = grpcLoggingEnabled;
+    }
+
+    public boolean isJobWorkerEnabled() {
+        return jobWorkerEnabled;
+    }
+
+    public void setJobWorkerEnabled(boolean jobWorkerEnabled) {
+        this.jobWorkerEnabled = jobWorkerEnabled;
+    }
+
+    public boolean isOtelEnabled() {
+        return otelEnabled;
+    }
+
+    public void setOtelEnabled(boolean otelEnabled) {
+        this.otelEnabled = otelEnabled;
     }
 }

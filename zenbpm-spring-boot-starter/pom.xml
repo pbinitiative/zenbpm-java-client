@@ -17,6 +17,7 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <opentelemetry.version>1.58.0</opentelemetry.version>
+        <opentelemetry-spring-boot-starter.version>2.23.0</opentelemetry-spring-boot-starter.version>
     </properties>
 
     <dependencies>
@@ -51,6 +52,12 @@
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-context</artifactId>
             <version>${opentelemetry.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-spring-boot-starter</artifactId>
+            <version>${opentelemetry-spring-boot-starter.version}</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 </project>

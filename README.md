@@ -28,7 +28,13 @@ Maven:
 </dependency>
 ```
 
-Configure connection settings in application.yml (values shown are defaults):
+Configure connection settings in application.yml 
+
+values shown in `zenbpm` section are defaults.
+
+`logging` section configures logging for rest and grpc clients separately.
+ - `DEBUG` levels expose headers of calls and responses.
+ - `TRACE` level exposes full request and response bodies. <b>Never use this in production!</b>
 ```yaml
 zenbpm:
   restUrl: http://localhost:8080/v1
@@ -39,6 +45,13 @@ zenbpm:
   grpcLoggingEnabled: true
   jobWorkerEnabled: true
   otelEnabled: true
+  
+logging:
+  level:
+    root: INFO
+    org.zenbpm.rest: TRACE
+    org.zenbpm.grpc: DEBUG
+
 ```
 
 ## Working examples
@@ -64,13 +77,14 @@ public class MyService {
   @Autowired
   private ZenbpmClientService zenbpm;
 
-  public void deployExampleProcess() throws ApiException {
+  public Long deployExampleProcess() throws ApiException {
     ApiClient apiClient = zenbpm.getApiClient();
     ProcessDefinitionApi defApi = new ProcessDefinitionApi(apiClient);
 
     // Example: create a process definition from a BPMN string (adjust to your endpoint contract)
     String bpmnXml = "<definitions ...>...</definitions>";
-    defApi.createProcessDefinition(bpmnXml);
+    Long definitionKey = defApi.createProcessDefinition(bpmnXml).getProcessDefinitionKey();
+    return definitionKey;
   }
 
   public void startMyProcess() throws ApiException {

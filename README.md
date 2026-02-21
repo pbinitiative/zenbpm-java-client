@@ -10,6 +10,9 @@
 * OpenTelemetry interceptors for REST and spans for gRPC
 * Configurable HTTP/gRPC logging
 
+## Build this project
+``mvn clean package``
+
 ## Getting started
 
 Add the starter to your application and the core client as needed.

@@ -28,6 +28,7 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +42,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
     private final Map<String, Handler> handlers = new ConcurrentHashMap<>();
 
-    private volatile boolean running = false;
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     private ManagedChannel channel;
     private StreamObserver<Zenbpm.JobStreamRequest> requestObserver;
@@ -70,7 +71,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
     @Override
     public void start() {
-        if (running || handlers.isEmpty()) {
+        if (running.get() || handlers.isEmpty()) {
             return;
         }
         ManagedChannelBuilder<?> chBuilder = ManagedChannelBuilder
@@ -99,13 +100,13 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             @Override
             public void onError(Throwable t) {
                 log.error("Stream error", t);
-                running = false;
+                running.set(false);
             }
 
             @Override
             public void onCompleted() {
                 log.info("Stream completed by server");
-                running = false;
+                running.set(false);
             }
         };
 
@@ -120,7 +121,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             requestObserver.onNext(req);
         }
 
-        running = true;
+        running.set(true);
     }
 
     private Collection<String> getJobTypes() {
@@ -228,7 +229,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
     @Override
     public void stop() {
-        if (!running) return;
+        if (!running.get()) return;
         try {
             if (requestObserver != null) {
                 try {
@@ -245,13 +246,13 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
-            running = false;
+            running.set(false);
         }
     }
 
     @Override
     public boolean isRunning() {
-        return running;
+        return running.get();
     }
 
     @Override

@@ -15,7 +15,7 @@ public class ZenbpmClientAutoConfiguration {
 
     private final boolean isOtelDisabled;
 
-    public ZenbpmClientAutoConfiguration(@Value("${otel.sdk.disabled}") boolean isOtelDisabled) {
+    public ZenbpmClientAutoConfiguration(@Value("${otel.sdk.disabled:false}") boolean isOtelDisabled) {
         this.isOtelDisabled = isOtelDisabled;
     }
 

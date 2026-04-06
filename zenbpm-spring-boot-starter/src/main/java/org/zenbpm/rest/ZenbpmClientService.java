@@ -6,25 +6,29 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.stereotype.Service;
 import org.zenbpm.ZenbpmClientProperties;
 import org.zenbpm.client.ApiClient;
 
 import javax.annotation.PostConstruct;
 
-@Service
 public class ZenbpmClientService {
 
     private static final Logger log = LoggerFactory.getLogger(ZenbpmClientService.class);
 
     private final ZenbpmClientProperties properties;
     private final ObjectProvider<OpenTelemetry> openTelemetry;
+    private final boolean isOtelDisabled;
 
     private ApiClient apiClient;
 
-    public ZenbpmClientService(ZenbpmClientProperties properties, ObjectProvider<OpenTelemetry> openTelemetry) {
+    public ZenbpmClientService(
+            ZenbpmClientProperties properties,
+            ObjectProvider<OpenTelemetry> openTelemetry,
+            boolean isOtelDisabled
+    ) {
         this.properties = properties;
         this.openTelemetry = openTelemetry;
+        this.isOtelDisabled = isOtelDisabled;
     }
 
     @PostConstruct
@@ -43,7 +47,7 @@ public class ZenbpmClientService {
         OkHttpClient.Builder builder = apiClient.getHttpClient().newBuilder();
 
         OpenTelemetry otel = openTelemetry.getIfAvailable();
-        if (properties.isOtelEnabled() && otel != null) {
+        if (!isOtelDisabled && otel != null) {
             builder.addInterceptor(new ZenbpmOkHttpOtelInterceptor(otel));
         }
 

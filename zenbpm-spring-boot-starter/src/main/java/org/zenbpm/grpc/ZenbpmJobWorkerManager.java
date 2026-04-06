@@ -14,6 +14,8 @@ import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.ObjectProvider;
@@ -30,15 +32,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(ZenbpmJobWorkerManager.class);
-    private static final TypeReference<HashMap<String,Object>> MAP_TYPE_REF = new TypeReference<HashMap<String,Object>>() {};
+    private static final TypeReference<HashMap<String,Object>> MAP_TYPE_REF = new TypeReference<>() {};
     private final ZenbpmClientProperties properties;
     private final ObjectProvider<OpenTelemetry> openTelemetry;
+    private final boolean isOtelDisabled;
 
     private final Map<String, Handler> handlers = new ConcurrentHashMap<>();
 
@@ -49,9 +49,14 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ZenbpmJobWorkerManager(ZenbpmClientProperties properties, ObjectProvider<OpenTelemetry> openTelemetry) {
+    public ZenbpmJobWorkerManager(
+            ZenbpmClientProperties properties,
+            ObjectProvider<OpenTelemetry> openTelemetry,
+            boolean isOtelDisabled
+    ) {
         this.properties = properties;
         this.openTelemetry = openTelemetry;
+        this.isOtelDisabled = isOtelDisabled;
     }
 
     @Override
@@ -84,7 +89,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
         ZenBpmGrpc.ZenBpmStub stub = ZenBpmGrpc.newStub(channel);
 
-        StreamObserver<Zenbpm.JobStreamResponse> responseObserver = new StreamObserver<Zenbpm.JobStreamResponse>() {
+        StreamObserver<Zenbpm.JobStreamResponse> responseObserver = new StreamObserver<>() {
             @Override
             public void onNext(Zenbpm.JobStreamResponse resp) {
                 if (resp.hasError()) {
@@ -136,7 +141,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             return;
         }
 
-        OpenTelemetry otel = properties.isOtelEnabled() ? openTelemetry.getIfAvailable() : null;
+        OpenTelemetry otel = !isOtelDisabled ? openTelemetry.getIfAvailable() : null;
         Tracer tracer = (otel != null) ? otel.getTracer("org.zenbpm.grpc") : null;
 
         Span span = (tracer != null)
@@ -165,7 +170,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
                 JobContext context = new JobContext(job, variables);
                 result = handler.method.invoke(handler.bean, context);
             } else if (paramTypes.length == 1 && paramTypes[0].isAssignableFrom(Map.class)) {
-                TypeReference<HashMap<String,Object>> typeRef = new TypeReference<HashMap<String,Object>>() {};
+                TypeReference<HashMap<String,Object>> typeRef = new TypeReference<>() {};
                 Map<String, Object> variables = objectMapper.readValue(job.getVariables().newInput(), typeRef);
                 result = handler.method.invoke(handler.bean, variables);
             } else {
@@ -214,14 +219,18 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
     }
 
     private ByteString serializeResult(Object result) throws JsonProcessingException {
-        if (result == null) {
-            return ByteString.copyFromUtf8("null");
-        }
-        if (result instanceof byte[]) {
-            return ByteString.copyFrom((byte[]) result);
-        }
-        if (result instanceof String) {
-            return ByteString.copyFromUtf8((String) result);
+        switch (result) {
+            case null -> {
+                return ByteString.copyFromUtf8("null");
+            }
+            case byte[] bytes -> {
+                return ByteString.copyFrom(bytes);
+            }
+            case String s -> {
+                return ByteString.copyFromUtf8(s);
+            }
+            default -> {
+            }
         }
         String json = objectMapper.writeValueAsString(result);
         return ByteString.copyFromUtf8(json);

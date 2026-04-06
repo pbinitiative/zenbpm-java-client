@@ -12,8 +12,8 @@
     <artifactId>zenbpm-spring-boot-starter</artifactId>
 
     <properties>
-        <spring-boot.version>2.7.18</spring-boot.version>
-        <spring-boot-configuration-processor.version>2.7.18</spring-boot-configuration-processor.version>
+        <spring-boot.version>3.5.13</spring-boot.version>
+        <spring-boot-configuration-processor.version>3.5.13</spring-boot-configuration-processor.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <opentelemetry.version>1.58.0</opentelemetry.version>

@@ -47,7 +47,8 @@ zenbpm:
   grpcPlaintext: true
   grpcLoggingEnabled: true
   jobWorkerEnabled: true
-  otelEnabled: true
+
+otel.sdk.disabled: true
   
 logging:
   level:

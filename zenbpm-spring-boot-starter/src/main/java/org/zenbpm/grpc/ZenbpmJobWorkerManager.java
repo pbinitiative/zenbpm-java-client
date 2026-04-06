@@ -170,8 +170,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
                 JobContext context = new JobContext(job, variables);
                 result = handler.method.invoke(handler.bean, context);
             } else if (paramTypes.length == 1 && paramTypes[0].isAssignableFrom(Map.class)) {
-                TypeReference<HashMap<String,Object>> typeRef = new TypeReference<>() {};
-                Map<String, Object> variables = objectMapper.readValue(job.getVariables().newInput(), typeRef);
+                Map<String, Object> variables = objectMapper.readValue(job.getVariables().newInput(), MAP_TYPE_REF);
                 result = handler.method.invoke(handler.bean, variables);
             } else {
                 throw new IllegalArgumentException("@JobWorker method must have 0 params or a single WaitingJob/JobContext/Map<String, Object> param");

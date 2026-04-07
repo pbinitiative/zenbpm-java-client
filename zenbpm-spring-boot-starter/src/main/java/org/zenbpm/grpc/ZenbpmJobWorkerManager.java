@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(ZenbpmJobWorkerManager.class);
-    private static final TypeReference<HashMap<String,Object>> MAP_TYPE_REF = new TypeReference<>() {};
+    private static final TypeReference<HashMap<String,Object>> MAP_TYPE_REF = new TypeReference<HashMap<String,Object>>() {};
     private final ZenbpmClientProperties properties;
     private final ObjectProvider<OpenTelemetry> openTelemetry;
     private final boolean isOtelDisabled;
@@ -89,7 +89,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
         ZenBpmGrpc.ZenBpmStub stub = ZenBpmGrpc.newStub(channel);
 
-        StreamObserver<Zenbpm.JobStreamResponse> responseObserver = new StreamObserver<>() {
+        StreamObserver<Zenbpm.JobStreamResponse> responseObserver = new StreamObserver<Zenbpm.JobStreamResponse>() {
             @Override
             public void onNext(Zenbpm.JobStreamResponse resp) {
                 if (resp.hasError()) {
@@ -218,18 +218,14 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
     }
 
     private ByteString serializeResult(Object result) throws JsonProcessingException {
-        switch (result) {
-            case null -> {
-                return ByteString.copyFromUtf8("null");
-            }
-            case byte[] bytes -> {
-                return ByteString.copyFrom(bytes);
-            }
-            case String s -> {
-                return ByteString.copyFromUtf8(s);
-            }
-            default -> {
-            }
+        if (result == null) {
+            return ByteString.copyFromUtf8("null");
+        }
+        if (result instanceof byte[]) {
+            return ByteString.copyFrom((byte[]) result);
+        }
+        if (result instanceof String) {
+            return ByteString.copyFromUtf8((String) result);
         }
         String json = objectMapper.writeValueAsString(result);
         return ByteString.copyFromUtf8(json);

@@ -4,6 +4,7 @@
 
 ## Features
 
+* Project uses JDK 8+ and Spring Boot 2.7+ to support legacy systems, but can be easily adjusted to the newest JDK and Spring versions (see pom.xml).
 * Spring Boot auto-configuration (drop-in starter)
 * REST client (`ApiClient` + typed APIs generated from OpenAPI)
 * gRPC job workers via `@JobWorker` and ZenbpmJobWorkerManager

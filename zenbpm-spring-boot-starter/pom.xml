@@ -13,7 +13,6 @@
 
     <properties>
         <spring-boot.version>2.7.18</spring-boot.version>
-        <spring-boot-configuration-processor.version>2.7.18</spring-boot-configuration-processor.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <opentelemetry.version>1.58.0</opentelemetry.version>
@@ -35,7 +34,7 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>
-            <version>${spring-boot-configuration-processor.version}</version>
+            <version>${spring-boot.version}</version>
             <optional>true</optional>
         </dependency>
         <dependency>

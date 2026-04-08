@@ -6,59 +6,59 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.stereotype.Service;
 import org.zenbpm.ZenbpmClientProperties;
 import org.zenbpm.client.ApiClient;
 
-import javax.annotation.PostConstruct;
-
-@Service
 public class ZenbpmClientService {
 
     private static final Logger log = LoggerFactory.getLogger(ZenbpmClientService.class);
 
     private final ZenbpmClientProperties properties;
     private final ObjectProvider<OpenTelemetry> openTelemetry;
+    private final boolean isOtelDisabled;
 
     private ApiClient apiClient;
 
-    public ZenbpmClientService(ZenbpmClientProperties properties, ObjectProvider<OpenTelemetry> openTelemetry) {
-        this.properties = properties;
-        this.openTelemetry = openTelemetry;
-    }
-
-    @PostConstruct
-    private void init() {
-        initApiClient();
-    }
-
     public ApiClient getApiClient() {
+        initApiClient();
         return apiClient;
     }
 
+    public ZenbpmClientService(
+            ZenbpmClientProperties properties,
+            ObjectProvider<OpenTelemetry> openTelemetry,
+            boolean isOtelDisabled
+    ) {
+        this.properties = properties;
+        this.openTelemetry = openTelemetry;
+        this.isOtelDisabled = isOtelDisabled;
+    }
+
     private void initApiClient() {
-        apiClient = new ApiClient();
-        apiClient.setBasePath(properties.getRestUrl());
+        if (apiClient == null) {
+            apiClient = new ApiClient();
+            apiClient.setBasePath(properties.getRestUrl());
 
-        OkHttpClient.Builder builder = apiClient.getHttpClient().newBuilder();
+            OkHttpClient.Builder builder = apiClient.getHttpClient().newBuilder();
 
-        OpenTelemetry otel = openTelemetry.getIfAvailable();
-        if (properties.isOtelEnabled() && otel != null) {
-            builder.addInterceptor(new ZenbpmOkHttpOtelInterceptor(otel));
+            OpenTelemetry otel = openTelemetry.getIfAvailable();
+            if (!isOtelDisabled && otel != null) {
+                builder.addInterceptor(new ZenbpmOkHttpOtelInterceptor(otel));
+            }
+
+            if (properties.isRestLoggingEnabled()) {
+                HttpLoggingInterceptor.Logger slf4jLogger = this::logHttpMessage;
+                HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor(slf4jLogger);
+                interceptor.setLevel(
+                        log.isTraceEnabled()
+                                ? HttpLoggingInterceptor.Level.BODY
+                                : HttpLoggingInterceptor.Level.BASIC
+                );
+                builder.addInterceptor(interceptor);
+            }
+
+            apiClient.setHttpClient(builder.build());
         }
-
-        if (properties.isRestLoggingEnabled()) {
-            HttpLoggingInterceptor.Logger slf4jLogger = this::logHttpMessage;
-            HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor(slf4jLogger);
-            interceptor.setLevel(
-                    log.isTraceEnabled()
-                            ? HttpLoggingInterceptor.Level.BODY
-                            : HttpLoggingInterceptor.Level.BASIC
-            );
-            builder.addInterceptor(interceptor);
-        }
-
-        apiClient.setHttpClient(builder.build());
     }
 
     private void logHttpMessage(String message) {

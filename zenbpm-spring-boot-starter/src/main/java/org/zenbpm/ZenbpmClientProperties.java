@@ -16,9 +16,6 @@ public class ZenbpmClientProperties {
     private boolean grpcLoggingEnabled = true;
     private boolean jobWorkerEnabled = true;
 
-    // opentelemetry
-    private boolean otelEnabled = true;
-
     public String getRestUrl() {
         return restUrl;
     }
@@ -75,11 +72,4 @@ public class ZenbpmClientProperties {
         this.jobWorkerEnabled = jobWorkerEnabled;
     }
 
-    public boolean isOtelEnabled() {
-        return otelEnabled;
-    }
-
-    public void setOtelEnabled(boolean otelEnabled) {
-        this.otelEnabled = otelEnabled;
-    }
 }

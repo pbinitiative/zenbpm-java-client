@@ -1,0 +1,177 @@
+# =============================================================================
+# Release pipeline for zenbpm-java-client
+#
+# Automatically triggered when ZenBPM (pbinitiative/zenbpm) publishes a new
+# release. Copies the latest api.yaml from ZenBPM, bumps the project version
+# to match, builds, and deploys to the configured Maven repository.
+#
+# Requirements (set up in GitHub repo Settings → Secrets and variables → Actions):
+#   Secret: ZENBPM_READ_TOKEN
+#     A GitHub Personal Access Token (classic or fine-grained) with at least
+#     "Contents: read" access to pbinitiative/zenbpm. Used to check out the
+#     matching tag from the upstream ZenBPM repo.
+#
+#   To trigger from ZenBPM's release workflow, add a step like:
+#     - name: Trigger Java client release
+#       uses: peter-evans/repository-dispatch@v3
+#       with:
+#         token: ${{ secrets.ZENBPM_JAVA_CLIENT_ACCESS_TOKEN }}
+#         repository: pbinitiative/zenbpm-java-client
+#         event-type: release-upstream
+#         client-payload: '{"version": "${{ github.ref_name }}"}'
+# =============================================================================
+
+name: Release to Maven Repository
+
+on:
+  # 1) Automated trigger from ZenBPM's own release workflow
+  repository_dispatch:
+    types: [release-upstream]
+
+  # 2) Manual trigger for testing or ad-hoc releases
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to publish (e.g., v1.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write      # create GitHub Release + tag, push version bump commit
+  packages: write      # deploy to GitHub Packages
+
+env:
+  JAVA_VERSION: '8'
+  MAVEN_CLI_OPTS: '-B -ntp'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Version -----------------------------------------------------------
+      - name: Determine release version
+        id: version
+        run: |
+          case "${{ github.event_name }}" in
+            repository_dispatch)
+              VERSION="${{ github.event.client_payload.version }}"
+              ;;
+            workflow_dispatch)
+              VERSION="${{ github.event.inputs.version }}"
+              ;;
+          esac
+
+          # Validate format — expects "vX.Y.Z" or "vX.Y.Z-rcN"
+          if ! echo "${VERSION}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "ERROR: version '${VERSION}' does not match vX.Y.Z format"
+            exit 1
+          fi
+
+          echo "VERSION=${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version_no_v=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      # ── Checkout sources --------------------------------------------------
+      - name: Checkout zenbpm-java-client
+        uses: actions/checkout@v4
+
+      - name: Checkout ZenBPM at matching tag
+        uses: actions/checkout@v4
+        with:
+          repository: pbinitiative/zenbpm
+          ref: ${{ steps.version.outputs.version }}
+          token: ${{ secrets.ZENBPM_READ_TOKEN }}
+          path: upstream/zenbpm
+
+      # ── Copy api.yaml -----------------------------------------------------
+      - name: Copy api.yaml from ZenBPM
+        run: |
+          SRC="upstream/zenbpm/openapi/api.yaml"
+          DST="zenbpm-client-core/src/main/resources/openapi/api.yaml"
+
+          if [ ! -f "$SRC" ]; then
+            echo "ERROR: api.yaml not found at ${SRC}"
+            exit 1
+          fi
+
+          cp -v "$SRC" "$DST"
+          echo "Copied api.yaml ($(wc -l < "$DST") lines)"
+
+      # ── Java + Maven setup ------------------------------------------------
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+          # Server configuration for GitHub Packages deploy
+          server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+
+      # ── Version bump ------------------------------------------------------
+      - name: Update project version to match ZenBPM release
+        run: |
+          mvn ${MAVEN_CLI_OPTS} \
+            versions:set \
+            -DnewVersion="${{ steps.version.outputs.version_no_v }}" \
+            -DgenerateBackupPoms=false
+
+      # ── Commit version bump -----------------------------------------------
+      - name: Commit and push version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "**/pom.xml" zenbpm-client-core/src/main/resources/openapi/api.yaml
+          git commit -m "chore: release ${{ steps.version.outputs.version }}"
+          git push
+
+      # ── Build --------------------------------------------------------------
+      - name: Build & run tests
+        run: mvn ${MAVEN_CLI_OPTS} clean verify
+
+      # ── Deploy: GitHub Packages -------------------------------------------
+      - name: Deploy to GitHub Packages
+        run: >
+          mvn ${MAVEN_CLI_OPTS} deploy -DskipTests
+          -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }}
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Deploy: Maven Central (optional) ----------------------------------
+      # Uncomment this section and add the following secrets to your repo:
+      #   MAVEN_CENTRAL_USERNAME, MAVEN_CENTRAL_PASSWORD, GPG_PRIVATE_KEY, GPG_PASSPHRASE
+      #
+      # Also add <distributionManagement> to your root pom.xml:
+      #   <distributionManagement>
+      #     <snapshotRepository><id>ossrh</id><url>...</url></snapshotRepository>
+      #     <repository><id>ossrh</id><url>...</url></repository>
+      #   </distributionManagement>
+      #
+      # - name: Deploy to Maven Central
+      #   run: mvn ${MAVEN_CLI_OPTS} deploy -Prelease
+      #   env:
+      #     MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      #     MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+
+      # ── GitHub Release ----------------------------------------------------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body: |
+            ## ZenBPM Java Client ${{ steps.version.outputs.version }}
+
+            This release corresponds to ZenBPM [${{ steps.version.outputs.version }}](https://github.com/pbinitiative/zenbpm/releases/tag/${{ steps.version.outputs.version }}).
+
+            ### Changes
+            - Updated api.yaml from ZenBPM ${{ steps.version.outputs.version }}
+            - Generated updated REST client and DTOs
+            - Published to GitHub Packages
+          files: |
+            zenbpm-client-core/target/*.jar
+            zenbpm-spring-boot-starter/target/*.jar
+          fail_on_unmatched_files: true

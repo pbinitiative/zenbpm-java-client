@@ -1,4 +1,4 @@
-package org.zenbpm.grpc;
+package org.pbinitiative.zenbpm.grpc;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -22,9 +22,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.util.ReflectionUtils;
-import org.zenbpm.ZenbpmClientProperties;
-import org.zenbpm.proto.ZenBpmGrpc;
-import org.zenbpm.proto.Zenbpm;
+import org.pbinitiative.zenbpm.ZenbpmClientProperties;
+import org.pbinitiative.zenbpm.proto.ZenBpmGrpc;
+import org.pbinitiative.zenbpm.proto.Zenbpm;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -142,7 +142,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
         }
 
         OpenTelemetry otel = !isOtelDisabled ? openTelemetry.getIfAvailable() : null;
-        Tracer tracer = (otel != null) ? otel.getTracer("org.zenbpm.grpc") : null;
+        Tracer tracer = (otel != null) ? otel.getTracer("org.pbinitiative.zenbpm.grpc") : null;
 
         Span span = (tracer != null)
                 ? tracer.spanBuilder("zenbpm.job.process").setSpanKind(SpanKind.CONSUMER).startSpan()

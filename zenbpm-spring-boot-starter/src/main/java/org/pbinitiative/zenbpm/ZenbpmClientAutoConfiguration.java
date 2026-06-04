@@ -1,4 +1,4 @@
-package org.zenbpm;
+package org.pbinitiative.zenbpm;
 
 import io.opentelemetry.api.OpenTelemetry;
 import org.springframework.beans.factory.ObjectProvider;
@@ -6,8 +6,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.zenbpm.grpc.ZenbpmJobWorkerManager;
-import org.zenbpm.rest.ZenbpmClientService;
+import org.pbinitiative.zenbpm.grpc.ZenbpmJobWorkerManager;
+import org.pbinitiative.zenbpm.rest.ZenbpmClientService;
 
 @AutoConfiguration
 @EnableConfigurationProperties(ZenbpmClientProperties.class)

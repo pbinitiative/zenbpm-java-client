@@ -1,6 +1,6 @@
-package org.zenbpm.grpc;
+package org.pbinitiative.zenbpm.grpc;
 
-import org.zenbpm.proto.Zenbpm;
+import org.pbinitiative.zenbpm.proto.Zenbpm;
 
 import java.util.Map;
 

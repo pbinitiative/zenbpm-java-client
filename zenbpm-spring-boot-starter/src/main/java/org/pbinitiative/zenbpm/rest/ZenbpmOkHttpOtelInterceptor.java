@@ -1,4 +1,4 @@
-package org.zenbpm.rest;
+package org.pbinitiative.zenbpm.rest;
 
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
@@ -19,7 +19,7 @@ public final class ZenbpmOkHttpOtelInterceptor implements Interceptor {
 
     public ZenbpmOkHttpOtelInterceptor(OpenTelemetry openTelemetry) {
         this.openTelemetry = openTelemetry;
-        this.tracer = openTelemetry.getTracer("org.zenbpm.rest");
+        this.tracer = openTelemetry.getTracer("org.pbinitiative.zenbpm.rest");
     }
 
     @Override

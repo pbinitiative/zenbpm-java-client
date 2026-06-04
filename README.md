@@ -14,25 +14,62 @@
 ## Build this project
 ``mvn clean package``
 
-## Getting started
+## Using the library
 
-Add the starter to your application and the core client as needed.
+Artifacts are served via **[JitPack](https://jitpack.io)** — no authentication or extra secrets required.
 
-Maven:
+### 1 — Add the JitPack repository to your pom.xml
+
 ```xml
+<repositories>
+  <repository>
+    <id>jitpack.io</id>
+    <url>https://jitpack.io</url>
+  </repository>
+</repositories>
+```
+
+### 2 — Add the dependencies
+
+Latest release: **v1.3.0**
+
+For multi-module projects JitPack uses `com.github.{owner}.{repo}` as the groupId.
+The version is the git tag exactly as pushed (e.g. `v1.3.0`).
+
+```xml
+<properties>
+  <zenbpm.version>v1.3.0</zenbpm.version>
+</properties>
+
+<!-- Spring Boot starter (includes auto-configuration) -->
 <dependency>
-  <groupId>org.zenbpm</groupId>
+  <groupId>com.github.pbinitiative.zenbpm-java-client</groupId>
   <artifactId>zenbpm-spring-boot-starter</artifactId>
-  <version>${project.version}</version>
+  <version>${zenbpm.version}</version>
 </dependency>
+
+<!-- Core REST + gRPC client (without Spring auto-configuration) -->
 <dependency>
-  <groupId>org.zenbpm</groupId>
+  <groupId>com.github.pbinitiative.zenbpm-java-client</groupId>
   <artifactId>zenbpm-client-core</artifactId>
-  <version>${project.version}</version>
+  <version>${zenbpm.version}</version>
+</dependency>
+
+<!-- gRPC transport – required at runtime -->
+<dependency>
+  <groupId>io.grpc</groupId>
+  <artifactId>grpc-netty-shaded</artifactId>
+  <version>1.78.0</version>
+  <scope>runtime</scope>
 </dependency>
 ```
 
-Configure connection settings in application.yml 
+JitPack builds the library on the first request for a given version and caches it
+thereafter. If a version shows as "unknown" the first resolution may take ~1–2 minutes.
+
+## Configuration
+
+Configure connection settings in `application.yml`.
 
 values shown in `zenbpm` section are defaults.
 

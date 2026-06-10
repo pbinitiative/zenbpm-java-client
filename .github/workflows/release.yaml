@@ -6,13 +6,13 @@
 #   1. Another pipeline (e.g. pbinitiative/zenbpm) updates api.yaml in this
 #      repo and commits it to main.
 #   2. That same pipeline pushes a matching version tag to this repo.
-#   3. This workflow fires, bumps pom.xml to match the tag, builds, and
-#      deploys to the configured Maven repository.
+#   3. This workflow fires, stamps the version, builds, runs tests, and
+#      creates a GitHub Release.
 #
-# Requirements (set up in GitHub repo Settings → Secrets and variables → Actions):
-#   No extra secrets are required beyond the default GITHUB_TOKEN.
-#   If you also deploy to Maven Central, add:
-#     MAVEN_CENTRAL_USERNAME, MAVEN_CENTRAL_PASSWORD, GPG_PRIVATE_KEY, GPG_PASSPHRASE
+# Publishing is handled by JitPack — no deploy step needed.
+# JitPack picks up the GitHub Release tag automatically and builds on demand.
+#
+# Requirements: no secrets beyond the default GITHUB_TOKEN.
 # =============================================================================
 
 name: Release to Maven Repository
@@ -33,7 +33,6 @@ on:
 
 permissions:
   contents: write      # create GitHub Release
-  packages: write      # deploy to GitHub Packages
 
 env:
   JAVA_VERSION: '8'
@@ -80,10 +79,6 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
           cache: maven
-          # Server configuration for GitHub Packages deploy
-          server-id: github
-          server-username: MAVEN_USERNAME
-          server-password: MAVEN_PASSWORD
 
       # ── Version bump (transient — not committed back) --------------------
       # The tag is the source of truth for the version. We apply it in-place
@@ -100,31 +95,6 @@ jobs:
       - name: Build & run tests
         run: mvn ${MAVEN_CLI_OPTS} clean verify
 
-      # ── Deploy: GitHub Packages -------------------------------------------
-      - name: Deploy to GitHub Packages
-        run: >
-          mvn ${MAVEN_CLI_OPTS} deploy -DskipTests
-          -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }}
-        env:
-          MAVEN_USERNAME: ${{ github.actor }}
-          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── Deploy: Maven Central (optional) ----------------------------------
-      # Uncomment this section and add the following secrets to your repo:
-      #   MAVEN_CENTRAL_USERNAME, MAVEN_CENTRAL_PASSWORD, GPG_PRIVATE_KEY, GPG_PASSPHRASE
-      #
-      # Also add <distributionManagement> to your root pom.xml:
-      #   <distributionManagement>
-      #     <snapshotRepository><id>ossrh</id><url>...</url></snapshotRepository>
-      #     <repository><id>ossrh</id><url>...</url></repository>
-      #   </distributionManagement>
-      #
-      # - name: Deploy to Maven Central
-      #   run: mvn ${MAVEN_CLI_OPTS} deploy -Prelease
-      #   env:
-      #     MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-      #     MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-
       # ── GitHub Release ----------------------------------------------------
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -137,7 +107,15 @@ jobs:
             ### Changes
             - Updated api.yaml from ZenBPM ${{ steps.version.outputs.version }}
             - Generated updated REST client and DTOs
-            - Published to GitHub Packages
+
+            ### Using this release via JitPack
+            ```xml
+            <dependency>
+              <groupId>com.github.pbinitiative.zenbpm-java-client</groupId>
+              <artifactId>zenbpm-spring-boot-starter</artifactId>
+              <version>${{ steps.version.outputs.version }}</version>
+            </dependency>
+            ```
           files: |
             zenbpm-client-core/target/*.jar
             zenbpm-spring-boot-starter/target/*.jar

@@ -35,7 +35,7 @@ permissions:
   contents: write      # create GitHub Release
 
 env:
-  JAVA_VERSION: '8'
+  JAVA_VERSION: '17'
   MAVEN_CLI_OPTS: '-B -ntp'
 
 jobs:

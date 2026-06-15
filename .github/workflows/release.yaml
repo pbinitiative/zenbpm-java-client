@@ -1,42 +1,47 @@
 # =============================================================================
 # Release pipeline for zenbpm-java-client
 #
-# Triggered when a version tag (e.g. v1.2.3) is pushed to this repository.
-# The expected flow is:
-#   1. Another pipeline (e.g. pbinitiative/zenbpm) updates api.yaml in this
-#      repo and commits it to main.
-#   2. That same pipeline pushes a matching version tag to this repo.
-#   3. This workflow fires, stamps the version, builds, runs tests, and
-#      creates a GitHub Release.
+# Triggered via repository_dispatch from the zenbpm main repo after a release
+# is published there. The zenbpm release workflow sends a repository_dispatch
+# event with the release tag in client_payload.
+#
+# This workflow:
+#   1. Checks out this repo and the zenbpm main repo at the matching tag.
+#   2. Copies the latest api.yaml from zenbpm into this repo.
+#   3. Commits and pushes the updated api.yaml.
+#   4. Stamps the version, builds, runs tests, and creates a GitHub Release.
 #
 # Publishing is handled by JitPack — no deploy step needed.
 # JitPack picks up the GitHub Release tag automatically and builds on demand.
 #
-# Requirements: no secrets beyond the default GITHUB_TOKEN.
+# Requirements:
+#   - GITHUB_TOKEN (default) — used to push the api.yaml commit.
+#   - For workflow_dispatch manual token input only: a PAT with contents:write.
 # =============================================================================
 
 name: Release to Maven Repository
 
 on:
-  # Triggered by pushing a version tag, e.g.: git tag v1.2.3 && git push origin v1.2.3
-  push:
-    tags:
-      - 'v*'
+  # Triggered by repository_dispatch from zenbpm release workflow
+  repository_dispatch:
+    types: [release_published]
 
   # Manual trigger for testing or ad-hoc releases
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version to publish (e.g., v1.2.0)'
+      release_tag:
+        description: 'Release tag from zenbpm (e.g., v1.2.0)'
         required: true
         type: string
 
 permissions:
-  contents: write      # create GitHub Release
+  contents: write      # push api.yaml commit + create GitHub Release
 
 env:
   JAVA_VERSION: '17'
   MAVEN_CLI_OPTS: '-B -ntp'
+  ZENBPM_REPO: 'pbinitiative/zenbpm'
+  API_YAML_PATH: 'zenbpm-client-core/src/main/resources/openapi/api.yaml'
 
 jobs:
   release:
@@ -48,11 +53,11 @@ jobs:
         id: version
         run: |
           case "${{ github.event_name }}" in
-            push)
-              VERSION="${{ github.ref_name }}"
+            repository_dispatch)
+              VERSION="${{ github.event.client_payload.release_tag }}"
               ;;
             workflow_dispatch)
-              VERSION="${{ github.event.inputs.version }}"
+              VERSION="${{ github.event.inputs.release_tag }}"
               ;;
           esac
 
@@ -66,11 +71,38 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "version_no_v=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
-      # ── Checkout sources --------------------------------------------------
+      # ── Checkout this repo ------------------------------------------------
       - name: Checkout zenbpm-java-client
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Pull zenbpm repo and copy api.yaml --------------------------------
+      - name: Pull api.yaml from zenbpm ${{ steps.version.outputs.version }}
+        run: |
+          echo "Cloning ${{ env.ZENBPM_REPO }} at tag ${{ steps.version.outputs.version }}..."
+          git clone --depth 1 --branch "${{ steps.version.outputs.version }}" \
+            "https://github.com/${{ env.ZENBPM_REPO }}.git" /tmp/zenbpm
+
+          echo "Copying api.yaml..."
+          cp /tmp/zenbpm/openapi/api.yaml "${{ env.API_YAML_PATH }}"
+
+          echo "--- api.yaml diff ---"
+          git diff --stat "${{ env.API_YAML_PATH }}" || true
+
+      # ── Commit updated api.yaml -------------------------------------------
+      - name: Commit updated api.yaml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add "${{ env.API_YAML_PATH }}"
+          git commit -m "feat: update api.yaml from zenbpm ${{ steps.version.outputs.version }}" || {
+            echo "No changes to commit — api.yaml is already up to date."
+            exit 0
+          }
+          git push
 
       # ── Java + Maven setup ------------------------------------------------
       - name: Set up JDK ${{ env.JAVA_VERSION }}
@@ -80,10 +112,7 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # ── Version bump (transient — not committed back) --------------------
-      # The tag is the source of truth for the version. We apply it in-place
-      # so that the built artifacts carry the right version, but we do not
-      # push any changes back to the repo.
+      # ── Version bump (transient — not committed back) ---------------------
       - name: Set project version to match tag
         run: |
           mvn ${MAVEN_CLI_OPTS} \

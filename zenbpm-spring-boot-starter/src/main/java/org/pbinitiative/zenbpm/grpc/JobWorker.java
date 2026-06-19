@@ -1,4 +1,4 @@
-package org.zenbpm.grpc;
+package org.pbinitiative.zenbpm.grpc;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;

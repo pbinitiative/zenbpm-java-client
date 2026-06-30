@@ -1,0 +1,111 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without v prefix, for example 2.0.0.
+        required: true
+        type: string
+      backend_tag:
+        description: Backend tag to read OpenAPI from, for example v2.0.0.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release app token
+        id: release-app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: pbinitiative
+          repositories: |
+            zenbpm-java-client
+            zenbpm
+
+      - name: Checkout java client
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.release-app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Fail if tag already exists
+        env:
+          GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          RELEASE_TAG: v${{ inputs.version }}
+        run: |
+          if gh api -H "Accept: application/vnd.github+json" "/repos/pbinitiative/zenbpm-java-client/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Tag $RELEASE_TAG already exists in zenbpm-java-client" >&2
+            exit 1
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Download OpenAPI from backend tag
+        env:
+          BACKEND_TAG: ${{ inputs.backend_tag }}
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/pbinitiative/zenbpm/${BACKEND_TAG}/openapi/api.yaml" \
+            -o zenbpm-client-core/src/main/resources/openapi/api.yaml
+
+      - name: Set Maven version
+        env:
+          RELEASE_TAG: v${{ inputs.version }}
+        run: mvn -B versions:set -DnewVersion="$RELEASE_TAG" -DgenerateBackupPoms=false
+
+      - name: Build java client
+        run: mvn -B clean package
+
+      - name: Commit release changes
+        env:
+          RELEASE_TAG: v${{ inputs.version }}
+        run: |
+          git config user.name "zenbpm-release-bot"
+          git config user.email "zenbpm-release-bot@users.noreply.github.com"
+          git add pom.xml zenbpm-client-core/pom.xml zenbpm-spring-boot-starter/pom.xml zenbpm-client-core/src/main/resources/openapi/api.yaml
+          if git diff --cached --quiet; then
+            echo "No java-client release changes to commit."
+          else
+            git commit -m "chore: release $RELEASE_TAG"
+          fi
+
+      - name: Tag and push
+        env:
+          GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          RELEASE_TAG: v${{ inputs.version }}
+        run: |
+          git tag "$RELEASE_TAG"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/pbinitiative/zenbpm-java-client.git" HEAD:main "$RELEASE_TAG"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          RELEASE_TAG: v${{ inputs.version }}
+        run: |
+          shopt -s globstar nullglob
+          artifacts=(**/target/*.jar)
+          gh release create "$RELEASE_TAG" "${artifacts[@]}" --generate-notes --verify-tag
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenbpm-java-client-v${{ inputs.version }}
+          path: |
+            **/target/*.jar
+            !**/target/original-*.jar

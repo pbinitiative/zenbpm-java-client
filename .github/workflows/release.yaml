@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Release version without v prefix, for example 2.0.0.
+        description: Release version with v prefix, for example v2.0.0.
         required: true
         type: string
       backend_tag:
@@ -43,7 +43,7 @@ jobs:
       - name: Fail if tag already exists
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_TAG: v${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.version }}
         run: |
           if gh api -H "Accept: application/vnd.github+json" "/repos/pbinitiative/zenbpm-java-client/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Tag $RELEASE_TAG already exists in zenbpm-java-client" >&2
@@ -66,7 +66,7 @@ jobs:
 
       - name: Set Maven version
         env:
-          RELEASE_TAG: v${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.version }}
         run: mvn -B versions:set -DnewVersion="$RELEASE_TAG" -DgenerateBackupPoms=false
 
       - name: Build java client
@@ -74,7 +74,7 @@ jobs:
 
       - name: Commit release changes
         env:
-          RELEASE_TAG: v${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.version }}
         run: |
           git config user.name "zenbpm-release-bot"
           git config user.email "zenbpm-release-bot@users.noreply.github.com"
@@ -88,7 +88,7 @@ jobs:
       - name: Tag and push
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_TAG: v${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.version }}
         run: |
           git tag "$RELEASE_TAG"
           git push "https://x-access-token:${GH_TOKEN}@github.com/pbinitiative/zenbpm-java-client.git" HEAD:main "$RELEASE_TAG"
@@ -96,7 +96,7 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_TAG: v${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.version }}
         run: |
           shopt -s globstar nullglob
           artifacts=(**/target/*.jar)
@@ -105,7 +105,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zenbpm-java-client-v${{ inputs.version }}
+          name: zenbpm-java-client-${{ inputs.version }}
           path: |
             **/target/*.jar
             !**/target/original-*.jar

@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.pbinitiative.zenbpm</groupId>
         <artifactId>zenbpm-java-client</artifactId>
-        <version>1.3.0</version>
+        <version>1.4.0-release-test-9</version>
     </parent>
 
     <artifactId>zenbpm-client-core</artifactId>

@@ -1,6 +1,5 @@
 edition = "2023";
 package grpc;
-
 option java_package = "org.pbinitiative.zenbpm.proto";
 
 option go_package = "github.com/pbinitiative/zenbpm/internal/grpc/proto";

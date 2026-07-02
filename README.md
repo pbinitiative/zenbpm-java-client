@@ -39,6 +39,14 @@ mise run build
 
 The release workflow downloads backend OpenAPI/proto sources before running these Maven steps.
 
+## Releasing
+
+Releases are triggered by the ZenBPM release orchestrator with `workflow_dispatch` input `version` set to the backend release tag, for example `v1.4.0`.
+
+The workflow downloads `openapi/api.yaml` and `pkg/zenclient/proto/zenbpm.proto` from the matching `pbinitiative/zenbpm` tag, sets Maven versions to the same tag including the `v` prefix, commits the generated release inputs, tags this repository, creates a GitHub Release, and publishes artifacts to Maven Central under `org.zenbpm`.
+
+Required repository secrets: `APP_ID_ZENBPM_RELEASE`, `APP_PRIVATE_KEY_ZENBPM_RELEASE`, `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_TOKEN`, `MAVEN_GPG_PRIVATE_KEY`, and `MAVEN_GPG_PASSPHRASE`.
+
 ## Getting started
 
 Add the starter to your application and the core client as needed.

@@ -20,7 +20,23 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}/mise.toml
+      RELEASE_TAG: ${{ inputs.version }}
     steps:
+      - name: Validate release tag
+        run: |
+          if [ -z "$RELEASE_TAG" ]; then
+            echo "Release tag is required." >&2
+            exit 1
+          fi
+
+          case "$RELEASE_TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "Release tag must start with v and look like vX.Y.Z: $RELEASE_TAG" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Create release app token
         id: release-app-token
         uses: actions/create-github-app-token@v2
@@ -41,7 +57,6 @@ jobs:
       - name: Fail if tag already exists
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_TAG: ${{ inputs.version }}
         run: |
           if gh api -H "Accept: application/vnd.github+json" "/repos/pbinitiative/zenbpm-java-client/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Tag $RELEASE_TAG already exists in zenbpm-java-client" >&2
@@ -57,7 +72,6 @@ jobs:
       - name: Download sources from backend tag
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_TAG: ${{ inputs.version }}
         run: |
           gh api "/repos/pbinitiative/zenbpm/contents/openapi/api.yaml?ref=${RELEASE_TAG}" --jq .content \
             | base64 -d > zenbpm-client-core/src/main/resources/openapi/api.yaml
@@ -65,16 +79,12 @@ jobs:
             | base64 -d > zenbpm-client-core/src/main/resources/proto/zenbpm.proto
 
       - name: Set Maven version
-        env:
-          RELEASE_TAG: ${{ inputs.version }}
         run: mise run set-release-version
 
       - name: Build java client
-        run: mise run build
+        run: mvn -B clean verify -Dgpg.skip=true
 
       - name: Commit release changes
-        env:
-          RELEASE_TAG: ${{ inputs.version }}
         run: |
           git config user.name "zenbpm-release-bot"
           git config user.email "zenbpm-release-bot@users.noreply.github.com"
@@ -85,10 +95,28 @@ jobs:
             git commit -m "chore: release $RELEASE_TAG"
           fi
 
+      - name: Import GPG key
+        run: |
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          printf '%s' "${{ secrets.MAVEN_GPG_PRIVATE_KEY }}" | gpg --batch --import
+          printf 'use-agent\npinentry-mode loopback\n' > ~/.gnupg/gpg.conf
+
+      - name: Deploy to Maven Central
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          mvn -B deploy \
+            -P release \
+            -DskipTests \
+            -Dgpg.skip=false \
+            --settings .github/settings.xml
+
       - name: Tag and push
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_TAG: ${{ inputs.version }}
         run: |
           git tag "$RELEASE_TAG"
           git push "https://x-access-token:${GH_TOKEN}@github.com/pbinitiative/zenbpm-java-client.git" HEAD:main "$RELEASE_TAG"
@@ -96,7 +124,6 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_TAG: ${{ inputs.version }}
         run: |
           shopt -s globstar nullglob
           artifacts=(**/target/*.jar)

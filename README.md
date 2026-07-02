@@ -12,7 +12,32 @@
 * Configurable HTTP/gRPC logging
 
 ## Build this project
-``mvn clean package``
+
+This repo uses [mise ](https://mise.jdx.dev/) (`mise.toml`) to pin the local Java and Maven versions used by CI.
+
+First-time setup:
+
+```bash
+mise trust
+mise install
+```
+
+Build:
+
+```bash
+mise run build
+```
+
+This runs `mvn -B clean package` with pinned Temurin 17 and Maven, without requiring a system Maven installation.
+
+For release validation, set the same Maven version that the release workflow uses before building:
+
+```bash
+RELEASE_TAG=v1.4.0 mise run set-release-version
+mise run build
+```
+
+The release workflow downloads backend OpenAPI/proto sources before running these Maven steps.
 
 ## Getting started
 
@@ -150,4 +175,3 @@ The gRPC worker manager connects on application start if `zenbpm.jobWorkerEnable
 ---
 
 Feel free to open issues or pull requests if you find bugs or want new features.
-

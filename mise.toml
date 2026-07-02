@@ -6,6 +6,14 @@ maven = "3.9.16"
 description = "Build the java client"
 run = "mvn -B clean package"
 
+[tasks.verify-release]
+description = "Verify release artifacts without signing"
+run = "mvn -B -ntp clean verify -Dgpg.skip=true"
+
+[tasks.deploy-release]
+description = "Deploy release artifacts to Maven Central"
+run = "mvn -B -ntp deploy -P release -DskipTests -Dgpg.skip=false --settings .github/settings.xml"
+
 [tasks.set-release-version]
 description = "Set Maven project version for a release"
-run = "mvn -B versions:set -DnewVersion=\"${RELEASE_TAG}\" -DgenerateBackupPoms=false"
+run = "mvn -B -ntp versions:set -DnewVersion=\"${RELEASE_TAG#v}\" -DgenerateBackupPoms=false"

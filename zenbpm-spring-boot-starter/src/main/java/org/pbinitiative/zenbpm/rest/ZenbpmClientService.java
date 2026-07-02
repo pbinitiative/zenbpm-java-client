@@ -1,4 +1,4 @@
-package org.zenbpm.rest;
+package org.pbinitiative.zenbpm.rest;
 
 import io.opentelemetry.api.OpenTelemetry;
 import okhttp3.OkHttpClient;
@@ -6,8 +6,8 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.zenbpm.ZenbpmClientProperties;
-import org.zenbpm.client.ApiClient;
+import org.pbinitiative.zenbpm.ZenbpmClientProperties;
+import org.pbinitiative.zenbpm.client.ApiClient;
 
 public class ZenbpmClientService {
 

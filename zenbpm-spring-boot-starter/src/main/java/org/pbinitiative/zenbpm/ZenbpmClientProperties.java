@@ -1,4 +1,4 @@
-package org.zenbpm;
+package org.pbinitiative.zenbpm;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

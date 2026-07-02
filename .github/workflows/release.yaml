@@ -78,11 +78,19 @@ jobs:
           gh api "/repos/pbinitiative/zenbpm/contents/pkg/zenclient/proto/zenbpm.proto?ref=${RELEASE_TAG}" --jq .content \
             | base64 -d > zenbpm-client-core/src/main/resources/proto/zenbpm.proto
 
+          if ! grep -q '^option java_package =' zenbpm-client-core/src/main/resources/proto/zenbpm.proto; then
+            awk '
+              { print }
+              /^package grpc;$/ { print "option java_package = \"org.pbinitiative.zenbpm.proto\";" }
+            ' zenbpm-client-core/src/main/resources/proto/zenbpm.proto > zenbpm-client-core/src/main/resources/proto/zenbpm.proto.tmp
+            mv zenbpm-client-core/src/main/resources/proto/zenbpm.proto.tmp zenbpm-client-core/src/main/resources/proto/zenbpm.proto
+          fi
+
       - name: Set Maven version
         run: mise run set-release-version
 
       - name: Build java client
-        run: mvn -B clean verify -Dgpg.skip=true
+        run: mise run verify-release
 
       - name: Commit release changes
         run: |
@@ -107,12 +115,7 @@ jobs:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-        run: |
-          mvn -B deploy \
-            -P release \
-            -DskipTests \
-            -Dgpg.skip=false \
-            --settings .github/settings.xml
+        run: mise run deploy-release
 
       - name: Tag and push
         env:

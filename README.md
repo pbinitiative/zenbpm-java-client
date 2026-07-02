@@ -30,20 +30,20 @@ mise run build
 
 This runs `mvn -B clean package` with pinned Temurin 17 and Maven, without requiring a system Maven installation.
 
-For release validation, set the same Maven version that the release workflow uses before building:
+For release validation, set the Maven artifact version from a release tag before building:
 
 ```bash
 RELEASE_TAG=v1.4.0 mise run set-release-version
-mise run build
+mise run verify-release
 ```
 
-The release workflow downloads backend OpenAPI/proto sources before running these Maven steps.
+The release workflow downloads backend OpenAPI/proto sources before running these Maven steps. Git tags keep the `v` prefix, while Maven artifact versions are published without it.
 
 ## Releasing
 
 Releases are triggered by the ZenBPM release orchestrator with `workflow_dispatch` input `version` set to the backend release tag, for example `v1.4.0`.
 
-The workflow downloads `openapi/api.yaml` and `pkg/zenclient/proto/zenbpm.proto` from the matching `pbinitiative/zenbpm` tag, sets Maven versions to the same tag including the `v` prefix, commits the generated release inputs, tags this repository, creates a GitHub Release, and publishes artifacts to Maven Central under `org.zenbpm`.
+The workflow downloads `openapi/api.yaml` and `pkg/zenclient/proto/zenbpm.proto` from the matching `pbinitiative/zenbpm` tag, sets Maven artifact versions from that tag without the `v` prefix, commits the generated release inputs, tags this repository, creates a GitHub Release, and publishes artifacts to Maven Central under `org.pbinitiative.zenbpm`.
 
 Required repository secrets: `APP_ID_ZENBPM_RELEASE`, `APP_PRIVATE_KEY_ZENBPM_RELEASE`, `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_TOKEN`, `MAVEN_GPG_PRIVATE_KEY`, and `MAVEN_GPG_PASSPHRASE`.
 
@@ -54,12 +54,12 @@ Add the starter to your application and the core client as needed.
 Maven:
 ```xml
 <dependency>
-  <groupId>org.zenbpm</groupId>
+  <groupId>org.pbinitiative.zenbpm</groupId>
   <artifactId>zenbpm-spring-boot-starter</artifactId>
   <version>${project.version}</version>
 </dependency>
 <dependency>
-  <groupId>org.zenbpm</groupId>
+  <groupId>org.pbinitiative.zenbpm</groupId>
   <artifactId>zenbpm-client-core</artifactId>
   <version>${project.version}</version>
 </dependency>
@@ -87,8 +87,8 @@ otel.sdk.disabled: true
 logging:
   level:
     root: INFO
-    org.zenbpm.rest: TRACE
-    org.zenbpm.grpc: DEBUG
+    org.pbinitiative.zenbpm.rest: TRACE
+    org.pbinitiative.zenbpm.grpc: DEBUG
 
 ```
 
@@ -100,12 +100,12 @@ Inject the provided ZenbpmClientService to obtain the ApiClient, then create a t
 ```java
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.zenbpm.rest.ZenbpmClientService;
-import org.zenbpm.client.ApiException;
-import org.zenbpm.client.ApiClient;
-import org.zenbpm.client.api.ProcessDefinitionApi;
-import org.zenbpm.client.api.ProcessInstanceApi;
-import org.zenbpm.client.api.dto.CreateProcessInstanceRequest;
+import org.pbinitiative.zenbpm.rest.ZenbpmClientService;
+import org.pbinitiative.zenbpm.client.ApiException;
+import org.pbinitiative.zenbpm.client.ApiClient;
+import org.pbinitiative.zenbpm.client.api.ProcessDefinitionApi;
+import org.pbinitiative.zenbpm.client.api.ProcessInstanceApi;
+import org.pbinitiative.zenbpm.client.api.dto.CreateProcessInstanceRequest;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -143,21 +143,21 @@ public class MyService {
 
 Notes:
 - Available typed APIs include ProcessDefinitionApi, ProcessInstanceApi, JobApi, MessageApi, etc. Construct them with the provided ApiClient.
-- Methods and DTOs come from the generated package `org.zenbpm.client.api` and `org.zenbpm.client.api.dto`.
+- Methods and DTOs come from the generated package `org.pbinitiative.zenbpm.client.api` and `org.pbinitiative.zenbpm.client.api.dto`.
 
 ### 2) Register a gRPC job worker
 Create a Spring bean with a method annotated by `@JobWorker`. Accepted method signatures:
 - no parameters
-- one parameter of type `org.zenbpm.proto.Zenbpm.WaitingJob`
-- one parameter of type `org.zenbpm.grpc.JobContext`
+- one parameter of type `org.pbinitiative.zenbpm.proto.Zenbpm.WaitingJob`
+- one parameter of type `org.pbinitiative.zenbpm.grpc.JobContext`
 - one parameter of type `Map<String, Object>`
 
 Return value can be any object and will be serialized as variables for job completion. Throwing an exception fails the job.
 
 ```java
 import org.springframework.stereotype.Component;
-import org.zenbpm.grpc.JobWorker;
-import org.zenbpm.grpc.JobContext;
+import org.pbinitiative.zenbpm.grpc.JobWorker;
+import org.pbinitiative.zenbpm.grpc.JobContext;
 import java.util.Map;
 import java.util.HashMap;
 

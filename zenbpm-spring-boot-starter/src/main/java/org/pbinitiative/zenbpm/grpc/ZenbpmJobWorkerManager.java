@@ -157,7 +157,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             MDC.put("job_key", Long.toString(job.getKey()));
             if (properties.isGrpcLoggingEnabled()) {
                 log.debug("Starting job processing for type '{}', key '{}'", job.getType(), job.getKey());
-                log.trace("Job variables: {}", job.getVariables());
+                log.trace("Job variables: {}", job.getInputVariables());
             }
             Object result;
             Class<?>[] paramTypes = handler.method.getParameterTypes();
@@ -166,11 +166,11 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             } else if (paramTypes.length == 1 && paramTypes[0].isAssignableFrom(Zenbpm.WaitingJob.class)) {
                 result = handler.method.invoke(handler.bean, job);
             } else if (paramTypes.length == 1 && paramTypes[0].isAssignableFrom(JobContext.class)) {
-                Map<String, Object> variables = objectMapper.readValue(job.getVariables().newInput(), MAP_TYPE_REF);
+                Map<String, Object> variables = objectMapper.readValue(job.getInputVariables().newInput(), MAP_TYPE_REF);
                 JobContext context = new JobContext(job, variables);
                 result = handler.method.invoke(handler.bean, context);
             } else if (paramTypes.length == 1 && paramTypes[0].isAssignableFrom(Map.class)) {
-                Map<String, Object> variables = objectMapper.readValue(job.getVariables().newInput(), MAP_TYPE_REF);
+                Map<String, Object> variables = objectMapper.readValue(job.getInputVariables().newInput(), MAP_TYPE_REF);
                 result = handler.method.invoke(handler.bean, variables);
             } else {
                 throw new IllegalArgumentException("@JobWorker method must have 0 params or a single WaitingJob/JobContext/Map<String, Object> param");

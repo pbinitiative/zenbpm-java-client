@@ -245,7 +245,6 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             if (channel != null) {
                 channel.shutdown();
                 channel.awaitTermination(3, TimeUnit.SECONDS);
-                channel.shutdownNow();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

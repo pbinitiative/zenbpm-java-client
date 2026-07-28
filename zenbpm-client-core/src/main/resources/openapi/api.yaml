@@ -3,7 +3,7 @@ openapi: 3.0.0
 info:
   title: ZenBPM OpenAPI
   description: REST API for ZenBPM
-  version: 1.4.0-release-test-9
+  version: 1.5.0
   contact:
     name: API Support
     email: info@pbinitiative.org
@@ -952,6 +952,7 @@ paths:
                       completed: 1180
                       terminated: 20
                       failed: 5
+                      withIncident: 0
                   - key: 4503599627370510
                     version: 1
                     bpmnProcessId: "order-fulfillment"
@@ -963,6 +964,7 @@ paths:
                       completed: 750
                       terminated: 15
                       failed: 5
+                      withIncident: 2
                 page: 1
                 size: 10
                 count: 2
@@ -1169,6 +1171,7 @@ paths:
                         bpmnProcessId: "loan-application"
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
+                        incidentCount: 1
                         variables:
                           customerId: "customer-456"
                           amount: 1000
@@ -1178,6 +1181,7 @@ paths:
                         bpmnProcessId: "loan-application"
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
+                        incidentCount: 0
                         variables:
                           customerId: "customer-789"
                           amount: 5000
@@ -1190,6 +1194,7 @@ paths:
                         bpmnProcessId: "loan-application"
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
+                        incidentCount: 2
                         variables:
                           customerId: "customer-101"
                           amount: 7500
@@ -1448,6 +1453,7 @@ paths:
                         processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
+                        incidentCount: 1
                         variables:
                           customerId: "customer-456"
                           amount: 1000
@@ -1456,6 +1462,7 @@ paths:
                         processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
+                        incidentCount: 0
                         variables:
                           customerId: "customer-789"
                           amount: 5000
@@ -1466,6 +1473,7 @@ paths:
                         processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
+                        incidentCount: 2
                         variables:
                           customerId: "customer-101"
                           amount: 7500
@@ -1586,7 +1594,8 @@ paths:
                   - key: 4503599627370510
                     elementId: "Task_CheckApplication"
                     type: "user-task"
-                    processInstanceKey: 4503599627370501
+                    processInstanceKey: 4503599627370500
+                    elementInstanceKey: 4503599627370900
                     state: "active"
                     createdAt: "2025-08-22T14:30:26Z"
                     inputVariables:
@@ -1596,6 +1605,7 @@ paths:
                     elementId: "Task_CreditCheck"
                     type: "service-task"
                     processInstanceKey: 4503599627370501
+                    elementInstanceKey: 4503599627370901
                     state: "completed"
                     createdAt: "2025-08-22T14:32:15Z"
                     inputVariables:
@@ -1682,14 +1692,17 @@ paths:
                 items:
                   - key: 4503599627370525
                     elementId: "StartEvent_1"
+                    elementType: "START_EVENT"
                     processInstanceKey: 4503599627370501
                     createdAt: "2025-08-22T14:30:26Z"
                   - key: 4503599627370526
                     elementId: "Flow_1"
+                    elementType: "SEQUENCE_FLOW"
                     processInstanceKey: 4503599627370501
                     createdAt: "2025-08-22T14:30:26Z"
                   - key: 4503599627370527
                     elementId: "Task_CheckApplication"
+                    elementType: "SERVICE_TASK"
                     processInstanceKey: 4503599627370501
                     createdAt: "2025-08-22T14:30:27Z"
                 page: 1
@@ -3132,6 +3145,7 @@ components:
         - completed
         - terminated
         - failed
+        - withIncident
       properties:
         total:
           type: integer
@@ -3148,6 +3162,15 @@ components:
         failed:
           type: integer
           description: Number of failed instances
+        withIncident:
+          type: integer
+          description: >
+            Number of process instances that currently have at least one
+            directly associated unresolved incident. Each process instance is
+            counted once, regardless of how many incidents it has, and
+            regardless of its state (i.e. active, completed, terminated or
+            failed). Incidents associated with nested subprocess or
+            multi-instance scopes are not rolled up to their parent instance.
     ProcessInstancePage:
       type: object
       allOf:
@@ -3203,6 +3226,13 @@ components:
           $ref: "#/components/schemas/ProcessInstanceProcessType"
         variables:
           type: object
+        incidentCount:
+          type: integer
+          description: >
+            Number of currently unresolved incidents directly associated with
+            this process instance. Present on process-instance list responses
+            and omitted from responses where the count is not calculated.
+            Zero when the listed instance has no open incidents.
     ProcessInstanceProcessType:
       type: string
       enum:
@@ -3245,6 +3275,10 @@ components:
         key:
           type: integer
           format: int64
+        elementInstanceKey:
+          type: integer
+          format: int64
+          nullable: true
         elementId:
           type: string
         processDefinitionKey:
@@ -3276,6 +3310,10 @@ components:
         key:
           type: integer
           format: int64
+        elementInstanceKey:
+          type: integer
+          format: int64
+          nullable: true
         elementId:
           type: string
         processDefinitionKey:
@@ -3404,6 +3442,7 @@ components:
         - elementId
         - type
         - processInstanceKey
+        - elementInstanceKey
         - state
         - createdAt
         - inputVariables
@@ -3418,6 +3457,9 @@ components:
         processInstanceKey:
           type: integer
           format: int64
+        elementInstanceKey:
+          type: integer
+          format: int64
         state:
           $ref: "#/components/schemas/JobState"
         createdAt:
@@ -3428,7 +3470,7 @@ components:
           description: Variables provided to the job at creation/activation time (from BPMN input mappings)
         outputVariables:
           type: object
-          description: Output variables set on job completion or failure
+          description: Output variables set on job completion or failure (full output before mapping)
         assignee:
           type: string
           description: Assignee (user assigned to this job)
@@ -3497,6 +3539,8 @@ components:
         - processInstanceKey
         - createdAt
         - elementId
+        - elementType
+        - inputVariables
       properties:
         key:
           type: integer
@@ -3507,8 +3551,19 @@ components:
         createdAt:
           type: string
           format: date-time
+        completedAt:
+          type: string
+          format: date-time
         elementId:
           type: string
+        elementType:
+          type: string
+        inputVariables:
+          type: object
+          description: Variables provided to the flow element at creation time (from BPMN input mappings)
+        outputVariables:
+          type: object
+          description: Output variables produced by the flow element on completion (after BPMN output mapping)
     IncidentPage:
       type: object
       allOf:

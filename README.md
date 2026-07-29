@@ -1,6 +1,6 @@
 # ZenBPM Java Client
 
-> Spring Boot starter and core REST/gRPC client to interact with the ZenBPM process engine. Includes auto-configuration, OpenAPI-generated REST client, optional gRPC job workers, logging and OpenTelemetry hooks.
+> Spring Boot starter and core REST/gRPC client to interact with the ZenBPM process engine. This project includes auto-configuration, OpenAPI-generated REST client, optional gRPC job workers, logging and OpenTelemetry hooks.
 
 ## Features
 
@@ -10,6 +10,9 @@
 * gRPC job workers via `@JobWorker` and ZenbpmJobWorkerManager
 * OpenTelemetry interceptors for REST and spans for gRPC
 * Configurable HTTP/gRPC logging
+
+## Prerequisities:
+You need to have a running instance of ZenBPM (https://github.com/pbinitiative/zenbpm/pkgs/container/zenbpm) and ideally also a running instance of ZenBPM UI https://github.com/orgs/pbinitiative/packages/container/package/zenbpm-ui.
 
 ## Build this project
 
@@ -62,6 +65,15 @@ Maven:
   <groupId>org.pbinitiative.zenbpm</groupId>
   <artifactId>zenbpm-client-core</artifactId>
   <version>${project.version}</version>
+</dependency>
+```
+
+if you are planning to use job workers, add also
+```xml
+<dependency>
+	<groupId>io.grpc</groupId>
+	<artifactId>grpc-netty-shaded</artifactId>
+  <version>1.80.0</version>
 </dependency>
 ```
 
@@ -177,6 +189,7 @@ public class EmailWorker {
   }
 }
 ```
+When a process instance reaches a service task whose job type matches a job worker’s name, that worker is triggered to execute the task.
 
 The gRPC worker manager connects on application start if `zenbpm.jobWorkerEnabled` is true.
 

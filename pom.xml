@@ -119,6 +119,7 @@
                             <publishingServerId>central</publishingServerId>
                             <autoPublish>true</autoPublish>
                             <waitUntil>published</waitUntil>
+                            <waitMaxTime>2700</waitMaxTime>
                             <deploymentName>zenbpm-java-client-${project.version}</deploymentName>
                         </configuration>
                     </plugin>

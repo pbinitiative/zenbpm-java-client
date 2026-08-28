@@ -29,8 +29,8 @@ jobs:
             exit 1
           fi
 
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.?[1-9][0-9]*)?$ ]]; then
-            echo "Release tag must be vX.Y.Z, vX.Y.Z-rcN, or vX.Y.Z-rc.N (N must be positive): $RELEASE_TAG" >&2
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must be vX.Y.Z: $RELEASE_TAG" >&2
             exit 1
           fi
 
@@ -127,11 +127,7 @@ jobs:
         run: |
           shopt -s globstar nullglob
           artifacts=(**/target/*.jar)
-          release_args=(--generate-notes --verify-tag)
-          if [[ "$RELEASE_TAG" =~ -rc\.?[1-9][0-9]*$ ]]; then
-            release_args+=(--prerelease)
-          fi
-          gh release create "$RELEASE_TAG" "${artifacts[@]}" "${release_args[@]}"
+          gh release create "$RELEASE_TAG" "${artifacts[@]}" --generate-notes --verify-tag
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

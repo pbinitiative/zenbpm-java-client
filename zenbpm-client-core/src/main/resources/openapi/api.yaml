@@ -3,7 +3,7 @@ openapi: 3.0.0
 info:
   title: ZenBPM OpenAPI
   description: REST API for ZenBPM
-  version: 1.7.0
+  version: 1.8.0
   contact:
     name: API Support
     email: info@pbinitiative.org
@@ -13,6 +13,9 @@ info:
 
 servers:
   - url: http://localhost:8080/v1
+  - url: http://localhost:8081/v1
+  - url: http://localhost:8082/v1
+  - url: http://zenbpm.local/v1
 
 tags:
   - name: process-definition
@@ -35,17 +38,11 @@ paths:
       requestBody:
         required: true
         content:
-          application/xml:
+          application/octet-stream:
             schema:
               type: string
-              format: xml
-            example: |
-              <?xml version="1.0" encoding="UTF-8"?>
-              <definitions>
-                <decision id="loan-approval" name="Loan Approval">
-                  ...
-                </decision>
-              </definitions>
+              format: binary
+              description: DMN resource definition file (.dmn format)
       responses:
         201:
           description: Dmn resource definition deployed
@@ -63,9 +60,9 @@ paths:
                 dmnResourceDefinitionKey: 4503599627370495
         200:
           description: >
-            DMN resource definition with the same dmnResourceDefinitionId and version already exists
-            and the content is identical — deployment ignored, returns the key of the existing definition.
-            If the content differs for the same ID and version, a new version is deployed and 201 is returned instead.
+            The latest DMN resource definition with the same dmnResourceDefinitionId has identical
+            content after XML formatting normalization. No new version is created; returns the existing key.
+            A new ID or a content change creates a new version and returns 201.
           content:
             application/json:
               schema:
@@ -594,19 +591,11 @@ paths:
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/octet-stream:
             schema:
-              type: object
-              required:
-                - resource
-              properties:
-                resource:
-                  type: string
-                  format: binary
-                  description: BPMN process definition file (.bpmn format only, size limited by httpServer.maxRequestBodyBytes, 10 MiB by default)
-            encoding:
-              resource:
-                contentType: application/octet-stream, application/xml
+              type: string
+              format: binary
+              description: BPMN process definition file (.bpmn format only, size limited by httpServer.maxRequestBodyBytes, 10 MiB by default)
       responses:
         201:
           description: Process definition deployed
@@ -624,9 +613,9 @@ paths:
                 processDefinitionKey: 4503599627370498
         200:
           description: >
-            Process definition with the same BPMN process ID and version already exists
-            and the content is identical — deployment ignored, returns the key of the existing definition.
-            If the content differs for the same ID and version, a new version is deployed and 201 is returned instead.
+            The latest process definition with the same BPMN process ID has identical content after
+            XML formatting normalization. No new version is created; returns the existing key.
+            A new ID or a content change creates a new version and returns 201.
           content:
             application/json:
               schema:
@@ -1083,6 +1072,8 @@ paths:
                 processDefinitionKey: 4503599627370498
                 createdAt: "2025-08-22T14:30:25Z"
                 state: "active"
+                version: 1
+                versionTag: "initial-release"
                 variables:
                   customerId: "customer-456"
                   amount: 1000
@@ -1215,6 +1206,8 @@ paths:
                       - key: 4503599627370501
                         processDefinitionKey: 4503599627370498
                         bpmnProcessId: "loan-application"
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
                         incidentCount: 1
@@ -1225,6 +1218,8 @@ paths:
                       - key: 4503599627370505
                         processDefinitionKey: 4503599627370498
                         bpmnProcessId: "loan-application"
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
                         incidentCount: 0
@@ -1238,6 +1233,8 @@ paths:
                       - key: 9007199254740992
                         processDefinitionKey: 4503599627370498
                         bpmnProcessId: "loan-application"
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
                         incidentCount: 2
@@ -1294,6 +1291,8 @@ paths:
               example:
                 key: 4503599627370501
                 processDefinitionKey: 4503599627370498
+                version: 1
+                versionTag: "initial-release"
                 createdAt: "2025-08-22T14:30:25Z"
                 state: "active"
                 variables:
@@ -1511,6 +1510,8 @@ paths:
                     items:
                       - key: 4503599627370501
                         processDefinitionKey: 4503599627370498
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
                         incidentCount: 1
@@ -1520,6 +1521,8 @@ paths:
                           applicationDate: "2025-08-22"
                       - key: 4503599627370505
                         processDefinitionKey: 4503599627370498
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
                         incidentCount: 0
@@ -1532,6 +1535,8 @@ paths:
                     items:
                       - key: 9007199254740992
                         processDefinitionKey: 4503599627370498
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
                         incidentCount: 2
@@ -1921,6 +1926,7 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/EventSubscriptionState"
+          description: Filter by state (omit to list subscriptions in every state)
       responses:
         200:
           description: List of message subscriptions
@@ -1981,6 +1987,7 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/EventSubscriptionState"
+          description: Filter by state (omit to list subscriptions in every state)
       responses:
         200:
           description: List of timer subscriptions
@@ -2041,6 +2048,7 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/EventSubscriptionState"
+          description: Filter by state (omit to list subscriptions in every state)
       responses:
         200:
           description: List of error subscriptions
@@ -3214,6 +3222,9 @@ components:
         bpmnProcessName:
           type: string
           description: Process name from BPMN
+        versionTag:
+          type: string
+          description: Optional process version tag from `zenbpm:versionTag`
     ProcessDefinitionDetail:
       type: object
       required:
@@ -3388,6 +3399,7 @@ components:
       required:
         - key
         - processDefinitionKey
+        - version
         - createdAt
         - state
         - variables
@@ -3400,6 +3412,10 @@ components:
           type: integer
           format: int64
         bpmnProcessId:
+          type: string
+        version:
+          type: integer
+        versionTag:
           type: string
         businessKey:
           type: string
@@ -3634,6 +3650,7 @@ components:
         - key
         - elementId
         - type
+        - elementType
         - processInstanceKey
         - elementInstanceKey
         - state
@@ -3647,6 +3664,10 @@ components:
           type: string
         type:
           type: string
+          description: Configurable worker-routing type
+        elementType:
+          type: string
+          description: BPMN element type that created the job
         processInstanceKey:
           type: integer
           format: int64

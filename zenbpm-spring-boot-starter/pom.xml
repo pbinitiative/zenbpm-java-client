@@ -20,6 +20,9 @@
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <opentelemetry.version>1.58.0</opentelemetry.version>
         <opentelemetry-spring-boot-starter.version>2.23.0</opentelemetry-spring-boot-starter.version>
+        <grpc.version>1.78.0</grpc.version>
+        <junit.version>5.12.2</junit.version>
+        <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
     </properties>
 
     <dependencies>
@@ -61,5 +64,27 @@
             <version>${opentelemetry-spring-boot-starter.version}</version>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <version>${grpc.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+            </plugin>
+        </plugins>
+    </build>
 </project>

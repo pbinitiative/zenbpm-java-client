@@ -208,6 +208,8 @@ public class EmailWorker {
 
 An exception from the method fails the job. The returned map is serialized as job-completion output variables. The worker manager connects only when `zenbpm.job-worker-enabled` is true **and** at least one annotated worker has been discovered.
 
+If the gRPC job stream is interrupted, the worker manager recreates it and restores all job-type subscriptions automatically. Reconnect attempts continue with exponential backoff from 100 ms up to 30 seconds; stopping the Spring application cancels pending attempts and closes the channel.
+
 ### Tested flow
 
 The BPMN service task's job type must match the annotation. Declare `xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"` on the BPMN definitions and place the task definition and output mappings inside the service task's extension elements:

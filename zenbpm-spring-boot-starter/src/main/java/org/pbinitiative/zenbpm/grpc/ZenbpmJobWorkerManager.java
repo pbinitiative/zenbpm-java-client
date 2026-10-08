@@ -29,13 +29,21 @@ import org.pbinitiative.zenbpm.proto.Zenbpm;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(ZenbpmJobWorkerManager.class);
     private static final TypeReference<HashMap<String,Object>> MAP_TYPE_REF = new TypeReference<HashMap<String,Object>>() {};
+    private static final long RECONNECT_INITIAL_DELAY_MILLIS = 100L;
+    private static final long RECONNECT_MAX_DELAY_MILLIS = 30_000L;
+    private static final long RECONNECT_BACKOFF_RESET_MILLIS = 60_000L;
     private final ZenbpmClientProperties properties;
     private final ObjectProvider<OpenTelemetry> openTelemetry;
     private final boolean isOtelDisabled;
@@ -43,9 +51,15 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
     private final Map<String, Handler> handlers = new ConcurrentHashMap<>();
 
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final Object lifecycleMonitor = new Object();
 
     private ManagedChannel channel;
     private StreamObserver<Zenbpm.JobStreamRequest> requestObserver;
+    private ScheduledExecutorService reconnectExecutor;
+    private ScheduledFuture<?> reconnectTask;
+    private ScheduledFuture<?> backoffResetTask;
+    private long reconnectDelayMillis = RECONNECT_INITIAL_DELAY_MILLIS;
+    private long streamGeneration;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -76,57 +90,167 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
     @Override
     public void start() {
-        if (running.get() || handlers.isEmpty()) {
-            return;
+        synchronized (lifecycleMonitor) {
+            if (running.get() || handlers.isEmpty()) {
+                return;
+            }
+            ManagedChannelBuilder<?> chBuilder = ManagedChannelBuilder
+                    .forAddress(properties.getGrpcHost(), properties.getGrpcPort());
+            if (properties.isGrpcPlaintext()) {
+                chBuilder = chBuilder.usePlaintext();
+            }
+
+            channel = chBuilder.build();
+            reconnectExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "zenbpm-job-worker-reconnect");
+                thread.setDaemon(true);
+                return thread;
+            });
+            reconnectDelayMillis = RECONNECT_INITIAL_DELAY_MILLIS;
+            running.set(true);
         }
-        ManagedChannelBuilder<?> chBuilder = ManagedChannelBuilder
-                .forAddress(properties.getGrpcHost(), properties.getGrpcPort());
-        if (properties.isGrpcPlaintext()) {
-            chBuilder = chBuilder.usePlaintext();
+
+        connectJobStream();
+    }
+
+    private void connectJobStream() {
+        final ManagedChannel activeChannel;
+        final long generation;
+        synchronized (lifecycleMonitor) {
+            reconnectTask = null;
+            if (!running.get() || channel == null || channel.isShutdown()) {
+                return;
+            }
+            activeChannel = channel;
+            generation = ++streamGeneration;
         }
 
-        channel = chBuilder.build();
-
-        ZenBpmGrpc.ZenBpmStub stub = ZenBpmGrpc.newStub(channel);
-
+        AtomicReference<StreamObserver<Zenbpm.JobStreamRequest>> streamReference = new AtomicReference<>();
         StreamObserver<Zenbpm.JobStreamResponse> responseObserver = new StreamObserver<Zenbpm.JobStreamResponse>() {
             @Override
             public void onNext(Zenbpm.JobStreamResponse resp) {
+                if (!markStreamHealthyIfCurrent(generation)) {
+                    return;
+                }
                 if (resp.hasError()) {
                     log.error("Server error: {}: {}", resp.getError().getCode(), resp.getError().getMessage());
                     return;
                 }
                 if (resp.hasJob()) {
                     Zenbpm.WaitingJob job = resp.getJob();
-                    dispatchJob(job);
+                    dispatchJob(job, streamReference.get());
                 }
             }
 
             @Override
             public void onError(Throwable t) {
                 log.error("Stream error", t);
-                running.set(false);
+                handleStreamTermination(generation);
             }
 
             @Override
             public void onCompleted() {
                 log.info("Stream completed by server");
-                running.set(false);
+                handleStreamTermination(generation);
             }
         };
 
-        requestObserver = stub.jobStream(responseObserver);
+        StreamObserver<Zenbpm.JobStreamRequest> newRequestObserver = null;
+        try {
+            ZenBpmGrpc.ZenBpmStub stub = ZenBpmGrpc.newStub(activeChannel);
+            newRequestObserver = stub.jobStream(responseObserver);
+            streamReference.set(newRequestObserver);
 
-        for (String jobType : getJobTypes()) {
-            Zenbpm.StreamSubscriptionRequest subscribe = Zenbpm.StreamSubscriptionRequest.newBuilder()
-                    .setJobType(jobType)
-                    .setType(Zenbpm.StreamSubscriptionRequest.Type.TYPE_SUBSCRIBE)
-                    .build();
-            Zenbpm.JobStreamRequest req = Zenbpm.JobStreamRequest.newBuilder().setSubscription(subscribe).build();
-            requestObserver.onNext(req);
+            synchronized (lifecycleMonitor) {
+                if (!running.get() || generation != streamGeneration) {
+                    closeRequestObserver(newRequestObserver);
+                    return;
+                }
+                requestObserver = newRequestObserver;
+            }
+
+            for (String jobType : getJobTypes()) {
+                Zenbpm.StreamSubscriptionRequest subscribe = Zenbpm.StreamSubscriptionRequest.newBuilder()
+                        .setJobType(jobType)
+                        .setType(Zenbpm.StreamSubscriptionRequest.Type.TYPE_SUBSCRIBE)
+                        .build();
+                Zenbpm.JobStreamRequest req = Zenbpm.JobStreamRequest.newBuilder().setSubscription(subscribe).build();
+                newRequestObserver.onNext(req);
+            }
+
+            scheduleBackoffReset(generation);
+            log.info("Job stream opened and subscriptions sent for {} job type(s)", handlers.size());
+        } catch (RuntimeException ex) {
+            if (newRequestObserver != null) {
+                closeRequestObserver(newRequestObserver);
+            }
+            log.error("Failed to open job stream", ex);
+            handleStreamTermination(generation);
         }
+    }
 
-        running.set(true);
+    private boolean markStreamHealthyIfCurrent(long generation) {
+        synchronized (lifecycleMonitor) {
+            if (!running.get() || generation != streamGeneration) {
+                return false;
+            }
+            reconnectDelayMillis = RECONNECT_INITIAL_DELAY_MILLIS;
+            cancelBackoffResetTask();
+            return true;
+        }
+    }
+
+    private void scheduleBackoffReset(long generation) {
+        synchronized (lifecycleMonitor) {
+            if (!running.get() || generation != streamGeneration || reconnectExecutor == null) {
+                return;
+            }
+            cancelBackoffResetTask();
+            backoffResetTask = reconnectExecutor.schedule(() -> markStreamHealthyIfCurrent(generation),
+                    RECONNECT_BACKOFF_RESET_MILLIS, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void handleStreamTermination(long generation) {
+        long delayMillis;
+        synchronized (lifecycleMonitor) {
+            if (!running.get() || generation != streamGeneration) {
+                return;
+            }
+            streamGeneration++;
+            requestObserver = null;
+            cancelBackoffResetTask();
+
+            delayMillis = reconnectDelayMillis;
+            reconnectDelayMillis = Math.min(RECONNECT_MAX_DELAY_MILLIS, reconnectDelayMillis * 2);
+            if (reconnectTask != null && !reconnectTask.isDone()) {
+                return;
+            }
+            try {
+                reconnectTask = reconnectExecutor.schedule(this::connectJobStream, delayMillis, TimeUnit.MILLISECONDS);
+            } catch (RejectedExecutionException ex) {
+                if (running.get()) {
+                    log.error("Failed to schedule job stream reconnect", ex);
+                }
+                return;
+            }
+        }
+        log.info("Reconnecting job stream in {} ms", delayMillis);
+    }
+
+    private void cancelBackoffResetTask() {
+        if (backoffResetTask != null) {
+            backoffResetTask.cancel(false);
+            backoffResetTask = null;
+        }
+    }
+
+    private void closeRequestObserver(StreamObserver<Zenbpm.JobStreamRequest> observer) {
+        try {
+            observer.onCompleted();
+        } catch (RuntimeException ex) {
+            log.debug("Error closing obsolete request observer: {}", ex.getMessage());
+        }
     }
 
     private Collection<String> getJobTypes() {
@@ -134,9 +258,9 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
         return keys.isEmpty() ? Collections.emptyList() : keys;
     }
 
-    private void dispatchJob(Zenbpm.WaitingJob job) {
+    private void dispatchJob(Zenbpm.WaitingJob job, StreamObserver<Zenbpm.JobStreamRequest> stream) {
         Handler handler = handlers.get(job.getType());
-        if (handler == null) {
+        if (handler == null || stream == null) {
             // Ignore unknown job types
             return;
         }
@@ -182,8 +306,8 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
                     .setVariables(vars)
                     .build();
             Zenbpm.JobStreamRequest completeReq = Zenbpm.JobStreamRequest.newBuilder().setComplete(complete).build();
-            requestObserver.onNext(completeReq);
-            if (properties.isGrpcLoggingEnabled()) {
+            boolean completionSent = sendJobRequest(stream, completeReq, "completion", job.getKey());
+            if (completionSent && properties.isGrpcLoggingEnabled()) {
                 log.debug("Successfully completed job '{}'", job.getKey());
                 log.trace("Job result: {}", result);
             }
@@ -207,13 +331,28 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
                     .setVariables(vars)
                     .build();
             Zenbpm.JobStreamRequest failReq = Zenbpm.JobStreamRequest.newBuilder().setFail(fail).build();
-            requestObserver.onNext(failReq);
+            sendJobRequest(stream, failReq, "failure", job.getKey());
             log.error("Failed to process job '{}': {}", job.getKey(), msg, ex);
         } finally {
             MDC.remove("job_key");
             if (span != null) {
                 span.end();
             }
+        }
+    }
+
+    private boolean sendJobRequest(
+            StreamObserver<Zenbpm.JobStreamRequest> stream,
+            Zenbpm.JobStreamRequest request,
+            String responseType,
+            long jobKey
+    ) {
+        try {
+            stream.onNext(request);
+            return true;
+        } catch (RuntimeException ex) {
+            log.warn("Failed to send job {} for '{}'; the job may be redelivered", responseType, jobKey, ex);
+            return false;
         }
     }
 
@@ -233,23 +372,42 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
 
     @Override
     public void stop() {
-        if (!running.get()) return;
-        try {
-            if (requestObserver != null) {
-                try {
-                    requestObserver.onCompleted();
-                } catch (Exception e) {
-                    log.warn("Error completing request observer: {}", e.getMessage());
-                }
+        StreamObserver<Zenbpm.JobStreamRequest> observerToClose;
+        ManagedChannel channelToClose;
+        ScheduledExecutorService executorToClose;
+        synchronized (lifecycleMonitor) {
+            if (!running.getAndSet(false)) {
+                return;
             }
-            if (channel != null) {
-                channel.shutdown();
-                channel.awaitTermination(3, TimeUnit.SECONDS);
+            streamGeneration++;
+            observerToClose = requestObserver;
+            requestObserver = null;
+            channelToClose = channel;
+            channel = null;
+            executorToClose = reconnectExecutor;
+            reconnectExecutor = null;
+            if (reconnectTask != null) {
+                reconnectTask.cancel(false);
+                reconnectTask = null;
+            }
+            cancelBackoffResetTask();
+        }
+
+        try {
+            if (observerToClose != null) {
+                closeRequestObserver(observerToClose);
+            }
+            if (executorToClose != null) {
+                executorToClose.shutdownNow();
+            }
+            if (channelToClose != null) {
+                channelToClose.shutdown();
+                if (!channelToClose.awaitTermination(3, TimeUnit.SECONDS)) {
+                    channelToClose.shutdownNow();
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        } finally {
-            running.set(false);
         }
     }
 

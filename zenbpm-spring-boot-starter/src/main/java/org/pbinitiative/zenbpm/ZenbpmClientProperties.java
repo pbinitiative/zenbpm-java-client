@@ -2,6 +2,8 @@ package org.pbinitiative.zenbpm;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
+
 @ConfigurationProperties("zenbpm")
 public class ZenbpmClientProperties {
 
@@ -14,6 +16,8 @@ public class ZenbpmClientProperties {
     private int grpcPort = 9090;
     private boolean grpcPlaintext = true;
     private boolean grpcLoggingEnabled = true;
+    private Duration grpcKeepAliveTime = Duration.ofMinutes(5);
+    private Duration grpcKeepAliveTimeout = Duration.ofSeconds(20);
     private boolean jobWorkerEnabled = true;
 
     public String getRestUrl() {
@@ -62,6 +66,22 @@ public class ZenbpmClientProperties {
 
     public void setGrpcLoggingEnabled(boolean grpcLoggingEnabled) {
         this.grpcLoggingEnabled = grpcLoggingEnabled;
+    }
+
+    public Duration getGrpcKeepAliveTime() {
+        return grpcKeepAliveTime;
+    }
+
+    public void setGrpcKeepAliveTime(Duration grpcKeepAliveTime) {
+        this.grpcKeepAliveTime = grpcKeepAliveTime;
+    }
+
+    public Duration getGrpcKeepAliveTimeout() {
+        return grpcKeepAliveTimeout;
+    }
+
+    public void setGrpcKeepAliveTimeout(Duration grpcKeepAliveTimeout) {
+        this.grpcKeepAliveTimeout = grpcKeepAliveTimeout;
     }
 
     public boolean isJobWorkerEnabled() {

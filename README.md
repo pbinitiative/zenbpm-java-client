@@ -110,6 +110,9 @@ zenbpm:
   # Local development only. Use gRPC TLS and an HTTPS REST URL in other environments.
   grpc-plaintext: true
   grpc-logging-enabled: false
+  # Keep the interval at or above 5m unless the server keepalive policy is relaxed.
+  grpc-keep-alive-time: 5m
+  grpc-keep-alive-timeout: 20s
   job-worker-enabled: true
 
 otel:
@@ -208,7 +211,7 @@ public class EmailWorker {
 
 An exception from the method fails the job. The returned map is serialized as job-completion output variables. The worker manager connects only when `zenbpm.job-worker-enabled` is true **and** at least one annotated worker has been discovered.
 
-If the gRPC job stream is interrupted, the worker manager recreates it and restores all job-type subscriptions automatically. Reconnect attempts continue with exponential backoff from 100 ms up to 30 seconds; stopping the Spring application cancels pending attempts and closes the channel.
+If the gRPC job stream is interrupted, the worker manager recreates it and restores all job-type subscriptions automatically. Reconnect attempts continue with exponential backoff from 100 ms up to 30 seconds. A stream that remains open for at least one minute resets that backoff. Keepalive detects silent connection loss, and stopping the Spring application cancels pending attempts, interrupts queued job handling, and closes the channel.
 
 ### Tested flow
 

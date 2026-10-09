@@ -149,6 +149,35 @@ class ZenbpmJobWorkerManagerTest {
     }
 
     @Test
+    void appliesBackpressureWithoutDroppingBurstJobs() throws Exception {
+        int jobCount = 150;
+        BurstJobService service = new BurstJobService(jobCount);
+        server = startServer(0, service);
+        CountDownLatch firstJobStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirstJob = new CountDownLatch(1);
+        AtomicInteger handledJobs = new AtomicInteger();
+        manager = createManager(
+                server.getPort(),
+                new BurstWorker(firstJobStarted, releaseFirstJob, handledJobs));
+        manager.start();
+
+        assertTrue(service.subscribed.await(5, TimeUnit.SECONDS));
+
+        try {
+            service.sendJobs(jobCount);
+            assertTrue(firstJobStarted.await(5, TimeUnit.SECONDS));
+            Thread.sleep(200L);
+            assertEquals(1, handledJobs.get(), "only the requested job should reach the handler");
+        } finally {
+            releaseFirstJob.countDown();
+        }
+
+        assertTrue(service.completed.await(10, TimeUnit.SECONDS),
+                "every streamed job should be handled and completed");
+        assertEquals(jobCount, handledJobs.get());
+    }
+
+    @Test
     void growsBackoffWhenAStreamRespondsAndThenFails() throws Exception {
         FlappingJobService service = new FlappingJobService(4);
         server = startServer(0, service);
@@ -321,6 +350,76 @@ class ZenbpmJobWorkerManagerTest {
             started.countDown();
             release.await();
             return Collections.<String, Object>singletonMap("result", "completed");
+        }
+    }
+
+    private static class BurstWorker {
+        private final CountDownLatch firstJobStarted;
+        private final CountDownLatch releaseFirstJob;
+        private final AtomicInteger handledJobs;
+
+        private BurstWorker(
+                CountDownLatch firstJobStarted,
+                CountDownLatch releaseFirstJob,
+                AtomicInteger handledJobs
+        ) {
+            this.firstJobStarted = firstJobStarted;
+            this.releaseFirstJob = releaseFirstJob;
+            this.handledJobs = handledJobs;
+        }
+
+        @JobWorker("test-job")
+        public Map<String, Object> handle(Zenbpm.WaitingJob job) throws InterruptedException {
+            handledJobs.incrementAndGet();
+            if (job.getKey() == 1L) {
+                firstJobStarted.countDown();
+                releaseFirstJob.await();
+            }
+            return Collections.<String, Object>singletonMap("result", "completed");
+        }
+    }
+
+    private static class BurstJobService extends ZenBpmGrpc.ZenBpmImplBase {
+        private final CountDownLatch subscribed = new CountDownLatch(1);
+        private final CountDownLatch completed;
+        private final AtomicReference<StreamObserver<Zenbpm.JobStreamResponse>> responseObserver =
+                new AtomicReference<>();
+
+        private BurstJobService(int expectedCompletions) {
+            completed = new CountDownLatch(expectedCompletions);
+        }
+
+        @Override
+        public StreamObserver<Zenbpm.JobStreamRequest> jobStream(
+                StreamObserver<Zenbpm.JobStreamResponse> observer
+        ) {
+            responseObserver.set(observer);
+            return new NoopRequestObserver() {
+                @Override
+                public void onNext(Zenbpm.JobStreamRequest request) {
+                    if (request.hasSubscription()) {
+                        subscribed.countDown();
+                    } else if (request.hasComplete()) {
+                        completed.countDown();
+                    }
+                }
+
+                @Override
+                public void onCompleted() {
+                    observer.onCompleted();
+                }
+            };
+        }
+
+        private void sendJobs(int count) {
+            for (int index = 1; index <= count; index++) {
+                Zenbpm.WaitingJob job = Zenbpm.WaitingJob.newBuilder()
+                        .setKey(index)
+                        .setType("test-job")
+                        .setInputVariables(ByteString.copyFromUtf8("{}"))
+                        .build();
+                responseObserver.get().onNext(Zenbpm.JobStreamResponse.newBuilder().setJob(job).build());
+            }
         }
     }
 

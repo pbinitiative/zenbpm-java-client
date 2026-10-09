@@ -24,8 +24,15 @@ public class ZenbpmClientAutoConfiguration {
         return new ZenbpmClientService(props, openTelemetry, isOtelDisabled);
     }
 
+    // Static so Spring can instantiate this BeanPostProcessor early without
+    // fully initializing the configuration class (avoids the Spring warning and
+    // premature-initialization problem). isOtelDisabled is supplied as a @Value
+    // parameter because a static method cannot read the instance field.
     @Bean
-    public ZenbpmJobWorkerManager zenbpmJobWorkerManager(ZenbpmClientProperties props, ObjectProvider<OpenTelemetry> openTelemetry) {
+    public static ZenbpmJobWorkerManager zenbpmJobWorkerManager(
+            ZenbpmClientProperties props,
+            ObjectProvider<OpenTelemetry> openTelemetry,
+            @Value("${otel.sdk.disabled:false}") boolean isOtelDisabled) {
         return new ZenbpmJobWorkerManager(props, openTelemetry, isOtelDisabled);
     }
 }

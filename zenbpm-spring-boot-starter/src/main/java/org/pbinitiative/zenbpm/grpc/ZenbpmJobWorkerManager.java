@@ -2,6 +2,8 @@ package org.pbinitiative.zenbpm.grpc;
 
 import io.grpc.ManagedChannel;
 import io.grpc.Status;
+import io.grpc.stub.ClientCallStreamObserver;
+import io.grpc.stub.ClientResponseObserver;
 import io.grpc.stub.StreamObserver;
 import io.opentelemetry.api.OpenTelemetry;
 import org.jetbrains.annotations.NotNull;
@@ -24,6 +26,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle {
@@ -32,7 +35,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
     private static final long INITIAL_RECONNECT_DELAY_MILLIS = 100L;
     private static final long MAXIMUM_RECONNECT_DELAY_MILLIS = 30_000L;
     private static final long BACKOFF_RESET_AFTER_MILLIS = 60_000L;
-    private static final int JOB_QUEUE_CAPACITY = 100;
+    private static final int JOB_HANDOVER_QUEUE_CAPACITY = 1;
 
     private final ZenbpmClientProperties properties;
     private final JobDispatcher jobDispatcher;
@@ -44,7 +47,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
     private ManagedChannel channel;
     private SerializedRequestStream activeRequestStream;
     private ScheduledExecutorService reconnectExecutor;
-    private ExecutorService jobExecutor;
+    private ThreadPoolExecutor jobExecutor;
     private ScheduledFuture<?> reconnectTask;
     private long streamGeneration;
 
@@ -180,7 +183,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             if (!running || channel == null || channel.isShutdown()) {
                 return null;
             }
-            return new StreamSession(++streamGeneration, reconnectBackoff.now(), channel);
+            return new StreamSession(++streamGeneration, channel);
         }
     }
 
@@ -218,9 +221,10 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
                 return false;
             }
 
+            discardQueuedJobs(session);
             streamGeneration++;
             activeRequestStream = null;
-            delayMillis = reconnectBackoff.nextDelay(session.openedAtNanos);
+            delayMillis = reconnectBackoff.nextDelay(session.readyAtNanos());
             try {
                 reconnectTask = reconnectExecutor.schedule(
                         this::runReconnectTask,
@@ -251,20 +255,55 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
         }
     }
 
-    private void submitJob(Zenbpm.WaitingJob job, SerializedRequestStream requestStream) {
-        ExecutorService executor;
+    private void submitJob(StreamSession session, Zenbpm.WaitingJob job) {
+        ThreadPoolExecutor executor;
         synchronized (lifecycleMonitor) {
-            if (!running || jobExecutor == null) {
+            if (!isCurrent(session) || jobExecutor == null) {
                 return;
             }
             executor = jobExecutor;
         }
 
         try {
-            executor.execute(() -> jobDispatcher.dispatch(job, requestStream));
+            executor.execute(new JobTask(session, job));
         } catch (RejectedExecutionException exception) {
-            if (running) {
-                log.warn("Job handler queue is full; job '{}' may be redelivered", job.getKey());
+            if (terminate(session)) {
+                log.error("Job executor rejected job '{}'; reconnecting the stream", job.getKey(), exception);
+                session.cancel("Job executor rejected a job", exception);
+            }
+        }
+    }
+
+    private void discardQueuedJobs(StreamSession session) {
+        if (jobExecutor != null) {
+            jobExecutor.getQueue().removeIf(task ->
+                    task instanceof JobTask && ((JobTask) task).belongsTo(session));
+        }
+    }
+
+    private boolean isCurrentSession(StreamSession session) {
+        synchronized (lifecycleMonitor) {
+            return isCurrent(session);
+        }
+    }
+
+    private void requestNextResponse(StreamSession session) {
+        if (!isCurrentSession(session)) {
+            return;
+        }
+        session.requestNextResponse();
+    }
+
+    private void markStreamReady(
+            StreamSession session,
+            ClientCallStreamObserver<Zenbpm.JobStreamRequest> stream
+    ) {
+        if (!stream.isReady()) {
+            return;
+        }
+        synchronized (lifecycleMonitor) {
+            if (isCurrent(session)) {
+                session.markReady(reconnectBackoff.now());
             }
         }
     }
@@ -279,8 +318,10 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
         if (response.hasError()) {
             log.error("Server error: {}: {}", response.getError().getCode(), response.getError().getMessage());
         } else if (response.hasJob()) {
-            submitJob(response.getJob(), session.requestStream());
+            submitJob(session, response.getJob());
+            return;
         }
+        requestNextResponse(session);
     }
 
     private void handleStreamError(StreamSession session, Throwable throwable) {
@@ -322,7 +363,7 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
                 1,
                 0L,
                 TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(JOB_QUEUE_CAPACITY),
+                new ArrayBlockingQueue<>(JOB_HANDOVER_QUEUE_CAPACITY),
                 daemonThreadFactory("zenbpm-job-worker-handler"),
                 new ThreadPoolExecutor.AbortPolicy());
     }
@@ -367,11 +408,19 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
         }
     }
 
-    private final class JobStreamResponseObserver implements StreamObserver<Zenbpm.JobStreamResponse> {
+    private final class JobStreamResponseObserver implements
+            ClientResponseObserver<Zenbpm.JobStreamRequest, Zenbpm.JobStreamResponse> {
         private final StreamSession session;
 
         private JobStreamResponseObserver(StreamSession session) {
             this.session = session;
+        }
+
+        @Override
+        public void beforeStart(ClientCallStreamObserver<Zenbpm.JobStreamRequest> stream) {
+            session.attachResponseController(stream);
+            stream.disableAutoRequestWithInitial(1);
+            stream.setOnReadyHandler(() -> markStreamReady(session, stream));
         }
 
         @Override
@@ -390,15 +439,42 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
         }
     }
 
+    private final class JobTask implements Runnable {
+        private final StreamSession session;
+        private final Zenbpm.WaitingJob job;
+
+        private JobTask(StreamSession session, Zenbpm.WaitingJob job) {
+            this.session = session;
+            this.job = job;
+        }
+
+        @Override
+        public void run() {
+            try {
+                if (isCurrentSession(session)) {
+                    jobDispatcher.dispatch(job, session.requestStream());
+                }
+            } finally {
+                requestNextResponse(session);
+            }
+        }
+
+        private boolean belongsTo(StreamSession candidate) {
+            return session == candidate;
+        }
+    }
+
     private static final class StreamSession {
         private final long generation;
-        private final long openedAtNanos;
         private final ManagedChannel channel;
         private final AtomicReference<SerializedRequestStream> requestStream = new AtomicReference<>();
+        private final AtomicReference<ClientCallStreamObserver<Zenbpm.JobStreamRequest>> responseController =
+                new AtomicReference<>();
+        private final AtomicReference<Long> readyAtNanos = new AtomicReference<>();
+        private final AtomicBoolean closed = new AtomicBoolean();
 
-        private StreamSession(long generation, long openedAtNanos, ManagedChannel channel) {
+        private StreamSession(long generation, ManagedChannel channel) {
             this.generation = generation;
-            this.openedAtNanos = openedAtNanos;
             this.channel = channel;
         }
 
@@ -410,7 +486,38 @@ public class ZenbpmJobWorkerManager implements BeanPostProcessor, SmartLifecycle
             return requestStream.get();
         }
 
+        private void attachResponseController(
+                ClientCallStreamObserver<Zenbpm.JobStreamRequest> controller
+        ) {
+            responseController.set(controller);
+        }
+
+        private void requestNextResponse() {
+            ClientCallStreamObserver<Zenbpm.JobStreamRequest> controller = responseController.get();
+            if (!closed.get() && controller != null) {
+                controller.request(1);
+            }
+        }
+
+        private void markReady(long readyAt) {
+            if (!closed.get()) {
+                readyAtNanos.compareAndSet(null, readyAt);
+            }
+        }
+
+        private Long readyAtNanos() {
+            return readyAtNanos.get();
+        }
+
+        private void cancel(String message, Throwable cause) {
+            ClientCallStreamObserver<Zenbpm.JobStreamRequest> controller = responseController.get();
+            if (controller != null) {
+                controller.cancel(message, cause);
+            }
+        }
+
         private void markClosed() {
+            closed.set(true);
             SerializedRequestStream stream = requestStream();
             if (stream != null) {
                 stream.markClosed();

@@ -1,14 +1,19 @@
 package org.pbinitiative.zenbpm.grpc;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
 
 final class ReconnectBackoff {
+
+    private static final double JITTER_FACTOR = 0.2D;
 
     private final long initialDelayMillis;
     private final long maximumDelayMillis;
     private final long resetAfterNanos;
     private final LongSupplier nanoTime;
+    private final DoubleSupplier random;
 
     private long currentDelayMillis;
 
@@ -17,6 +22,21 @@ final class ReconnectBackoff {
             long maximumDelayMillis,
             long resetAfterMillis,
             LongSupplier nanoTime
+    ) {
+        this(
+                initialDelayMillis,
+                maximumDelayMillis,
+                resetAfterMillis,
+                nanoTime,
+                () -> ThreadLocalRandom.current().nextDouble());
+    }
+
+    ReconnectBackoff(
+            long initialDelayMillis,
+            long maximumDelayMillis,
+            long resetAfterMillis,
+            LongSupplier nanoTime,
+            DoubleSupplier random
     ) {
         if (initialDelayMillis <= 0L) {
             throw new IllegalArgumentException("initialDelayMillis must be positive");
@@ -31,6 +51,7 @@ final class ReconnectBackoff {
         this.maximumDelayMillis = maximumDelayMillis;
         this.resetAfterNanos = TimeUnit.MILLISECONDS.toNanos(resetAfterMillis);
         this.nanoTime = nanoTime;
+        this.random = random;
         reset();
     }
 
@@ -42,12 +63,12 @@ final class ReconnectBackoff {
         currentDelayMillis = initialDelayMillis;
     }
 
-    long nextDelay(long streamOpenedAtNanos) {
-        if (elapsedSince(streamOpenedAtNanos) >= resetAfterNanos) {
+    long nextDelay(Long streamReadyAtNanos) {
+        if (streamReadyAtNanos != null && elapsedSince(streamReadyAtNanos) >= resetAfterNanos) {
             reset();
         }
 
-        long delayMillis = currentDelayMillis;
+        long delayMillis = jittered(currentDelayMillis);
         currentDelayMillis = doubledDelay();
         return delayMillis;
     }
@@ -61,5 +82,14 @@ final class ReconnectBackoff {
             return maximumDelayMillis;
         }
         return Math.min(maximumDelayMillis, currentDelayMillis * 2L);
+    }
+
+    private long jittered(long delayMillis) {
+        double boundedRandom = Math.max(0D, Math.min(1D, random.getAsDouble()));
+        long minimum = Math.max(1L, Math.round(delayMillis * (1D - JITTER_FACTOR)));
+        long maximum = Math.min(
+                maximumDelayMillis,
+                Math.round(delayMillis * (1D + JITTER_FACTOR)));
+        return Math.round(minimum + ((maximum - minimum) * boundedRandom));
     }
 }
